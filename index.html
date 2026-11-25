@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>直播源分组工作台 · TXT ⇄ M3U</title>
+<meta name="description" content="导入本地 txt / m3u 直播源，按 demo 词库自动分组，注入 EPG 节目单与台标，导出 M3U 或 TXT。">
+<style>:root{
+  --bg:#0a0d11;
+  --bg-2:#0e1218;
+  --panel:#12171f;
+  --panel-2:#161d27;
+  --line:#222c39;
+  --line-soft:#1a2230;
+  --txt:#e6edf4;
+  --txt-2:#9aa9bb;
+  --txt-3:#66748a;
+  --accent:#3ddcb4;
+  --accent-dim:rgba(61,220,180,.12);
+  --amber:#f0b429;
+  --amber-dim:rgba(240,180,41,.12);
+  --rose:#f2587a;
+  --rose-dim:rgba(242,88,122,.12);
+  --blue:#5aa9ff;
+  --r-s:6px; --r-m:10px; --r-l:14px;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:
+    radial-gradient(1100px 520px at 88% -12%,rgba(61,220,180,.08),transparent 62%),
+    radial-gradient(880px 480px at 4% 104%,rgba(90,169,255,.07),transparent 60%),
+    var(--bg);
+  color:var(--txt);font-family:var(--sans);font-size:13.5px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+::selection{background:rgba(61,220,180,.28)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ---------- shell ---------- */
+.top{
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  padding:14px 22px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(18,23,31,.95),rgba(10,13,17,.72));
+  position:sticky;top:0;z-index:40;backdrop-filter:blur(10px);
+}
+.brand{display:flex;align-items:center;gap:11px;min-width:0}
+.brand .mark{
+  width:32px;height:32px;border-radius:9px;display:grid;place-items:center;
+  background:linear-gradient(145deg,#1b2632,#0f151d);border:1px solid #263341;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+}
+.brand .mark svg{width:17px;height:17px;color:var(--accent)}
+.brand h1{margin:0;font-size:15px;letter-spacing:.3px;font-weight:650}
+.brand p{margin:1px 0 0;font-size:11.5px;color:var(--txt-3);letter-spacing:.2px}
+.top-stats{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+.chip{
+  display:inline-flex;align-items:baseline;gap:6px;padding:5px 10px;border-radius:999px;
+  border:1px solid var(--line);background:var(--panel);font-size:11.5px;color:var(--txt-2);
+  white-space:nowrap;
+}
+.chip b{font-family:var(--mono);font-size:12.5px;color:var(--txt);font-weight:600}
+.chip.ok b{color:var(--accent)}
+.chip.warn b{color:var(--amber)}
+.chip.bad b{color:var(--rose)}
+
+.layout{
+  display:grid;grid-template-columns:340px minmax(0,1fr);gap:14px;
+  padding:14px 18px 26px;max-width:1560px;margin:0 auto;align-items:start;
+}
+@media (max-width:960px){
+  .layout{grid-template-columns:1fr;padding:12px}
+  .rail{position:static !important;max-height:none !important}
+}
+
+/* ---------- panels ---------- */
+.panel{
+  background:linear-gradient(180deg,var(--panel),var(--bg-2));
+  border:1px solid var(--line);border-radius:var(--r-l);
+  box-shadow:0 12px 30px -22px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.03);
+}
+.rail{position:sticky;top:76px;max-height:calc(100vh - 92px);overflow:auto}
+.rail::-webkit-scrollbar,.stage-body::-webkit-scrollbar,.modal pre::-webkit-scrollbar{width:9px;height:9px}
+.rail::-webkit-scrollbar-thumb,.stage-body::-webkit-scrollbar-thumb,.modal pre::-webkit-scrollbar-thumb{background:#243040;border-radius:9px;border:2px solid transparent;background-clip:padding-box}
+
+.blk{padding:14px 14px 16px;border-bottom:1px solid var(--line-soft)}
+.blk:last-child{border-bottom:0}
+.blk h2{
+  margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:1.4px;
+  color:var(--txt-3);font-weight:650;display:flex;align-items:center;gap:7px;
+}
+.blk h2 .tag{margin-left:auto;font-size:10px;letter-spacing:.4px;color:var(--txt-3);text-transform:none}
+
+/* dropzone */
+.drop{
+  border:1.5px dashed #2b3846;border-radius:var(--r-m);padding:16px 12px;text-align:center;
+  cursor:pointer;transition:.16s;background:rgba(255,255,255,.012);
+}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-dim)}
+.drop svg{width:20px;height:20px;color:var(--txt-3);margin-bottom:6px}
+.drop:hover svg,.drop.over svg{color:var(--accent)}
+.drop strong{display:block;font-size:12.5px;font-weight:600;color:var(--txt)}
+.drop span{display:block;font-size:11px;color:var(--txt-3);margin-top:3px}
+
+textarea{
+  width:100%;background:#0b0f15;border:1px solid var(--line);border-radius:var(--r-m);
+  padding:9px 10px;color:var(--txt);resize:vertical;line-height:1.55;
+  font-family:var(--mono);font-size:11.5px;min-height:84px;
+}
+textarea:focus,input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+input[type=text],input[type=url]{
+  width:100%;background:#0b0f15;border:1px solid var(--line);border-radius:8px;
+  padding:8px 10px;font-family:var(--mono);font-size:11.5px;
+}
+.field{margin-bottom:9px}
+.field label{display:block;font-size:11px;color:var(--txt-3);margin-bottom:4px;letter-spacing:.3px}
+
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:8px 13px;border-radius:9px;border:1px solid var(--line);
+  background:var(--panel-2);color:var(--txt);cursor:pointer;font-size:12.5px;font-weight:550;
+  transition:.15s;white-space:nowrap;
+}
+.btn svg{width:14px;height:14px}
+.btn:hover{border-color:#33455a;background:#1b2431;transform:translateY(-1px)}
+.btn:active{transform:none}
+.btn.primary{background:linear-gradient(180deg,#2fd8ad,#1eb894);color:#04221c;border-color:#39e3bd;font-weight:700}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-row{display:flex;gap:7px;flex-wrap:wrap}
+.btn-row .btn{flex:1 1 auto}
+
+/* switches */
+.opt{display:flex;align-items:flex-start;gap:9px;padding:6px 0;cursor:pointer;font-size:12px;color:var(--txt-2)}
+.opt input{appearance:none;width:30px;height:17px;border-radius:999px;background:#1d2634;border:1px solid #2b3746;position:relative;cursor:pointer;flex:0 0 auto;margin:1px 0 0;transition:.15s}
+.opt input::after{content:"";position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;background:#718299;transition:.15s}
+.opt input:checked{background:rgba(61,220,180,.3);border-color:var(--accent)}
+.opt input:checked::after{left:15px;background:var(--accent)}
+.opt span{line-height:1.4}
+.opt em{display:block;font-style:normal;font-size:10.5px;color:var(--txt-3)}
+
+/* epg status */
+.status{
+  display:flex;gap:8px;align-items:flex-start;font-size:11.5px;color:var(--txt-2);
+  background:#0c1118;border:1px solid var(--line-soft);border-radius:9px;padding:8px 10px;margin-top:8px;
+}
+.dot{width:7px;height:7px;border-radius:50%;margin-top:5px;flex:0 0 auto;background:var(--txt-3)}
+.dot.on{background:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+.dot.off{background:var(--amber);box-shadow:0 0 0 3px var(--amber-dim)}
+.dot.err{background:var(--rose)}
+details.more{margin-top:10px}
+details.more>summary{cursor:pointer;font-size:11.5px;color:var(--txt-3);list-style:none;display:flex;align-items:center;gap:6px}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary:hover{color:var(--accent)}
+details.more[open]>summary{color:var(--accent);margin-bottom:8px}
+
+/* ---------- stage ---------- */
+.stage{display:flex;flex-direction:column;overflow:hidden}
+.stage-head{
+  display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);
+  flex-wrap:wrap;background:rgba(255,255,255,.012);
+}
+.search{
+  position:relative;flex:1 1 220px;min-width:160px;
+}
+.search svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--txt-3)}
+.search input{padding-left:30px}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0b0f15}
+.seg button{
+  border:0;background:transparent;color:var(--txt-3);padding:7px 11px;font-size:11.5px;cursor:pointer;
+  border-right:1px solid var(--line-soft);
+}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--accent-dim);color:var(--accent);font-weight:600}
+.stage-body{padding:6px 8px 16px;max-height:calc(100vh - 190px);overflow:auto}
+
+.empty{
+  padding:64px 20px;text-align:center;color:var(--txt-3);
+}
+.empty .ico{width:44px;height:44px;margin:0 auto 12px;border-radius:12px;display:grid;place-items:center;background:#141b24;border:1px solid var(--line)}
+.empty .ico svg{width:20px;height:20px;color:#4a5a70}
+.empty h3{margin:0 0 6px;font-size:14px;color:var(--txt-2);font-weight:600}
+.empty p{margin:0 auto;font-size:12px;max-width:420px;line-height:1.7}
+.empty code{font-family:var(--mono);background:#141b24;padding:1px 5px;border-radius:4px;color:var(--amber);font-size:11.5px}
+
+/* group block */
+.grp{border:1px solid var(--line-soft);border-radius:var(--r-m);margin:7px 6px;overflow:hidden;background:rgba(255,255,255,.008)}
+.grp-h{
+  display:flex;align-items:center;gap:9px;padding:8px 11px;cursor:pointer;user-select:none;
+  background:linear-gradient(90deg,rgba(255,255,255,.028),transparent);
+}
+.grp-h:hover{background:rgba(255,255,255,.045)}
+.grp-h .caret{width:12px;height:12px;color:var(--txt-3);transition:.16s;flex:0 0 auto}
+.grp.closed .caret{transform:rotate(-90deg)}
+.grp-h b{font-size:12.5px;font-weight:600;letter-spacing:.2px}
+.grp-h .n{font-family:var(--mono);font-size:11px;color:var(--txt-3);background:#0b0f15;border:1px solid var(--line-soft);padding:1px 6px;border-radius:999px}
+.grp-h .bar{margin-left:auto;width:78px;height:4px;border-radius:99px;background:#1a2230;overflow:hidden;flex:0 0 auto}
+.grp-h .bar i{display:block;height:100%;background:linear-gradient(90deg,#2fd8ad,#5aa9ff)}
+.grp-body{padding:2px 0 6px}
+.grp.closed .grp-body{display:none}
+
+.row{
+  display:grid;grid-template-columns:20px minmax(120px,1.5fr) minmax(0,2fr) 108px 26px;
+  gap:9px;align-items:center;padding:5px 11px;font-size:12.3px;
+  border-top:1px solid rgba(255,255,255,.028);
+}
+.row:hover{background:rgba(90,169,255,.045)}
+.row .idx{font-family:var(--mono);font-size:10.5px;color:#3f4d61;text-align:right}
+.row .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.row .nm .logo{width:16px;height:16px;border-radius:3px;object-fit:contain;background:#0b0f15;flex:0 0 auto}
+.row .url{font-family:var(--mono);font-size:10.8px;color:var(--txt-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.row select{
+  background:#0b0f15;border:1px solid var(--line);border-radius:6px;padding:3px 4px;
+  font-size:11px;color:var(--txt-2);width:100%;cursor:pointer;
+}
+.row .act{
+  border:0;background:transparent;color:#4a5a70;cursor:pointer;padding:2px;border-radius:5px;
+  display:grid;place-items:center;
+}
+.row .act:hover{color:var(--rose);background:var(--rose-dim)}
+.row .act svg{width:13px;height:13px}
+.badge{font-size:9.5px;letter-spacing:.3px;padding:1px 5px;border-radius:4px;font-weight:600;flex:0 0 auto}
+.badge.exact{background:var(--accent-dim);color:var(--accent)}
+.badge.fuzzy{background:rgba(90,169,255,.14);color:var(--blue)}
+.badge.partial{background:var(--amber-dim);color:var(--amber)}
+.badge.none{background:var(--rose-dim);color:var(--rose)}
+
+@media (max-width:720px){
+  .row{grid-template-columns:18px minmax(0,1fr) 96px 24px;gap:7px}
+  .row .url{display:none}
+}
+
+/* ---------- modal ---------- */
+.modal{
+  position:fixed;inset:0;background:rgba(4,6,9,.72);backdrop-filter:blur(4px);
+  display:none;place-items:center;z-index:90;padding:18px;
+}
+.modal.on{display:grid}
+.modal .card{
+  width:min(880px,100%);max-height:86vh;display:flex;flex-direction:column;
+  background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+  box-shadow:0 30px 70px -30px #000;
+}
+.modal header{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.modal h3{margin:0;font-size:13.5px;font-weight:650}
+.modal .meta{font-size:11px;color:var(--txt-3);font-family:var(--mono)}
+.modal pre{
+  margin:0;padding:14px;overflow:auto;flex:1;font-family:var(--mono);font-size:11.5px;
+  line-height:1.65;color:#bdd0e3;background:#080b10;white-space:pre;max-height:60vh;
+}
+.modal footer{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);justify-content:flex-end}
+.close{margin-left:auto;border:0;background:transparent;color:var(--txt-3);cursor:pointer;font-size:18px;line-height:1;padding:2px 6px;border-radius:6px}
+.close:hover{color:var(--txt);background:#1b2431}
+
+.toast{
+  position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);
+  background:#182231;border:1px solid #2b3a4c;color:var(--txt);padding:9px 16px;border-radius:10px;
+  font-size:12.5px;opacity:0;pointer-events:none;transition:.22s;z-index:120;
+  box-shadow:0 16px 40px -18px #000;
+}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.toast.ok{border-color:rgba(61,220,180,.5)}
+.toast.err{border-color:rgba(242,88,122,.5)}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="4.2"/>
+      </svg>
+    </div>
+    <div>
+      <h1>直播源分组工作台</h1>
+      <p>TXT ⇄ M3U · 45 组词库自动归类 · EPG + 台标注入</p>
+    </div>
+  </div>
+  <div class="top-stats">
+    <div class="chip">频道 <b id="stTotal">0</b></div>
+    <div class="chip">分组 <b id="stGroup">0</b></div>
+    <div class="chip warn">未识别 <b id="stUnmatched">0</b></div>
+    <div class="chip" id="epgChip">EPG 命中 <b id="stEpg">—</b></div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ============ 左侧控制栏 ============ -->
+  <aside class="rail panel">
+
+    <section class="blk">
+      <h2>1 · 导入源 <span class="tag">txt / m3u</span></h2>
+      <div class="drop" id="drop">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <path d="M12 16V4M12 4l4 4M12 4L8 8"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+        </svg>
+        <strong>点击选择文件</strong>
+        <span>或拖拽 .txt / .m3u / .m3u8 到此处</span>
+      </div>
+      <input type="file" id="fileInput" class="sr" multiple accept=".txt,.m3u,.m3u8,text/plain">
+
+      <details class="more">
+        <summary>粘贴文本 / 从链接导入</summary>
+        <div class="field">
+          <textarea id="pasteBox" placeholder="频道名,http://地址&#10;CCTV1|CCTV-1,http://...&#10;或整段 #EXTM3U 内容"></textarea>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="btnPaste">解析粘贴内容</button>
+          <button class="btn ghost" id="btnClearPaste">清空</button>
+        </div>
+        <div class="field" style="margin-top:10px">
+          <label>订阅地址（需目标站允许跨域）</label>
+          <input type="text" id="urlInput" placeholder="https://example.com/live.m3u">
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="btnUrl">从链接导入</button>
+          <button class="btn ghost" id="btnDemo">载入 demo.txt</button>
+        </div>
+      </details>
+    </section>
+
+    <section class="blk">
+      <h2>2 · 电子节目单 EPG</h2>
+      <div class="field">
+        <label>EPG 地址（写入 M3U 头 + 用于匹配 tvg-id）</label>
+        <input type="text" id="epgUrl" value="https://epg.catvod.com/epg.xml">
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" id="btnEpg">读取节目单</button>
+      </div>
+      <div class="status"><span class="dot" id="epgDot"></span><span id="epgText">尚未载入</span></div>
+
+      <details class="more">
+        <summary>自动读取失败？这里有两个兜底</summary>
+        <div class="field">
+          <label>代理前缀（可选，如 https://your-proxy/?url=）</label>
+          <input type="text" id="epgProxy" placeholder="https://api.allorigins.win/raw?url=">
+        </div>
+        <div class="field">
+          <label>直接粘贴 epg.xml 内容（最稳）</label>
+          <textarea id="epgXml" placeholder="&lt;?xml version=&quot;1.0&quot;?&gt;&lt;tv&gt;&lt;channel id=&quot;cctv1&quot;&gt;..."></textarea>
+        </div>
+        <button class="btn" id="btnEpgPaste">解析粘贴的 EPG</button>
+      </details>
+    </section>
+
+    <section class="blk">
+      <h2>3 · 导出选项</h2>
+      <label class="opt"><input type="checkbox" id="optEpg" checked><span>写入节目单信息<em>M3U 头部 x-tvg-url 与 tvg-id</em></span></label>
+      <label class="opt"><input type="checkbox" id="optLogo" checked><span>补全台标 tvg-logo<em>live.fanmingming.com/tv/ 台标库</em></span></label>
+      <label class="opt"><input type="checkbox" id="optName" checked><span>写入 tvg-name<em>使用词库标准台名，便于播放器匹配</em></span></label>
+      <label class="opt"><input type="checkbox" id="optGroup" checked><span>保留分组信息<em>group-title / #genre# 段落</em></span></label>
+
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn primary" id="expM3u">导出 M3U</button>
+        <button class="btn primary" id="expTxt">导出 TXT</button>
+      </div>
+      <div class="btn-row" style="margin-top:7px">
+        <button class="btn ghost" id="expViewM3u">预览 M3U</button>
+        <button class="btn ghost" id="expViewTxt">预览 TXT</button>
+      </div>
+      <p style="font-size:10.8px;color:var(--txt-3);line-height:1.6;margin:9px 0 0">
+        导出遵循列表当前的搜索与筛选，无筛选时导出全部。
+      </p>
+    </section>
+
+    <section class="blk">
+      <h2>4 · 维护</h2>
+      <div class="btn-row">
+        <button class="btn" id="btnRescan">重新分组</button>
+        <button class="btn ghost" id="btnClear">清空列表</button>
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- ============ 右侧结果区 ============ -->
+  <main class="stage panel">
+    <div class="stage-head">
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input type="text" id="q" placeholder="搜索频道名、地址或分组…">
+      </div>
+      <div class="seg" id="segFilter">
+        <button data-f="all" class="on">全部</button>
+        <button data-f="matched">已识别</button>
+        <button data-f="unmatched">未识别</button>
+      </div>
+    </div>
+    <div class="stage-body" id="stageBody"></div>
+  </main>
+
+</div>
+
+<!-- 预览弹层 -->
+<div class="modal" id="modal">
+  <div class="card">
+    <header>
+      <h3 id="modalTitle">预览</h3>
+      <span class="meta" id="modalMeta"></span>
+      <button class="close" id="modalClose" aria-label="关闭">×</button>
+    </header>
+    <pre id="modalPre"></pre>
+    <footer>
+      <button class="btn ghost" id="modalCopy">复制全部</button>
+      <button class="btn primary" id="modalSave">下载文件</button>
+    </footer>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script id="dict" type="application/json">{"source":"demo.txt","groups":[{"g":"央视频道","c":[["CCTV1","CCTV-1","cctv1港澳版"],["CCTV2","CCTV-2"],["CCTV3","CCTV-3"],["CCTV4","CCTV-4","CCTV-4 中文国际"],["CCTV4美洲"],["CCTV4欧洲"],["CCTV5","CCTV-5"],["CCTV5+","CCTV-5+"],["CCTV6","CCTV-6"],["CCTV7","CCTV-7","CCTV7国防军事"],["CCTV8","CCTV-8","CCTV-8K"],["CCTV9","CCTV-9","CCTV-9 纪录","CCTV-9纪录D"],["CCTV10","CCTV-10"],["CCTV11","CCTV-11"],["CCTV12","CCTV-12","CCTV-12社会与法D"],["CCTV13","CCTV-13","cctv13"],["CCTV14","CCTV-14","CCTV-14少儿D"],["CCTV15","CCTV-15"],["CCTV16","CCTV-16","CCTV16奧運頻道"],["CCTV17","CCTV-17","CCTV17农业"],["CCTV4K","CCTV-4K 高清","CCTV-4K超","CCTV-4K超高清D"],["CCTV8K","CCTV-8K超"],["CETV1","中国教育1台","CETV-1"],["CETV2","中国教育2台"],["CETV3","CETV-3","中国教育3"],["CETV4","中国教育4台"],["CETV早期教育"],["第一剧场","CCTV-第一剧场D","CCTV第一剧场","CCTV-The First Theater"],["怀旧剧场","CCTV-怀旧剧场D","CCTV怀旧剧场"],["风云剧场","CCTV风云剧场","CCTV-风云剧场D"],["风云音乐","CCTV-风云音乐D","CCTV-风云音乐","CCTV-Storm Music"],["兵器科技","CCTV-兵器科技D","CCTV-兵器科技","CCTV-Weapon & Technology"],["风云足球","CCTV-风云足球D","CCTV-风云足球","CCTV-Storm Football"],["高尔夫网球","CCTV-高尔夫网球D","CCTV-高尔夫网球"],["央视台球","CCTV-央视台球D","CCTV-央视台球"],["世界地理","CCTV-世界地理D","CCTV-世界地理"],["央视文化精品","文化精品","CCTV-央视文化精品D","CCTV文化精品","CCTV-Culture of Quality"],["女性时尚","CCTV-女性时尚D","CCTV-女性时尚","CCTV-Women's Fashion"],["卫生健康","百姓健康","CCTV-卫生健康D","CCTV-Health"],["电视指南","CCTV-电视指南"],["发现之旅","中央新影-发现之旅","CCTV-发现之旅"],["老故事","中央新影-老故事","CCTV-老故事"],["中学生","CND Film Middle School Channel","CCTV-中学生"],["书画频道"],["中国天气"],["中华特产"],["CGTN","CGNT 新闻频道","CCTV+ 1","CCTV+ 2"],["CGTN英语","CGTN外语纪录","CGTN 記錄頻道","CGTN纪录","CGTN Documentary","CGTN记录"],["CGTN西语","CGTN西班牙语","CGTN Spanish"],["CGTN阿语","CGTN阿拉伯语"],["CGTN俄语"],["CGTN法语"],["CGTN Global Biz"]]},{"g":"电影频道","c":[["CHC影迷电影","CHC电影","CHC高清电影"],["CHC动作电影"],["CHC家庭影院"],["1905电影网"],["黑莓电影","NEWTV黑莓电影"],["动作电影","NewTV动作电影"],["超级电影"],["惊悚悬疑"],["东方影视"],["经典香港电影"],["抗战经典影片"],["经典电影"],["新片放映厅"],["高清大片"],["IPTV经典电影"],["私人影院"]]},{"g":"4K频道","c":[["北京卫视4K","北京卫视4K超"],["北京纪实科教8K","北京科教"],["山东卫视4K"],["东方卫视4K"],["湖南卫视4K"],["江苏卫视4K","Hunan TV"],["浙江卫视4K"],["四川卫视4K"],["河南卫视4K"],["广东卫视4K"],["欢笑剧场4K"],["苏州4k","苏州4K"],["深圳卫视4K"],["河北4K"],["绚影4K"],["华数爱上4K"],["南国都市4K"]]},{"g":"卫视频道","c":[["重温经典","重温经典1","重温经典2","重温经典B","重温经典D","重温经典组播"],["湖南卫视","湖南卫视D"],["浙江卫视","浙江卫视D"],["东方卫视","东方卫视D"],["北京卫视","北京卫视D"],["江苏卫视","江苏卫视D"],["安徽卫视","安徽卫视D"],["重庆卫视"],["四川卫视"],["东南卫视"],["深圳卫视","深圳卫视D"],["广东卫视","广东卫视D"],["广西卫视"],["厦门卫视"],["南方卫视"],["甘肃卫视"],["贵州卫视"],["河北卫视","Hebei TV"],["河南卫视","河南卫视D"],["黑龙江卫视"],["湖北卫视"],["江西卫视"],["吉林卫视"],["内蒙古卫视"],["辽宁卫视"],["宁夏卫视"],["青海卫视"],["山东卫视","山东卫视D"],["山东教育卫视","山东教育"],["山西卫视"],["天津卫视","天津卫视D"],["海南卫视"],["新疆卫视"],["云南卫视"],["西藏卫视"],["海峡卫视","福建海峡卫视","海峡卫视1","海峡卫视2","海峡卫视1B","海峡卫视2B"],["兵团卫视"],["黄河卫视"],["安多卫视"],["康巴卫视","Kangba TV"],["陕西卫视"],["农林卫视"],["三沙卫视"],["延边卫视"],["旅游卫视"],["大湾区卫视"],["西藏藏语","Xizang TV Tibetan"]]},{"g":"特色频道","c":[["4K乐享超清"],["中录动漫4K"],["亲子趣学4K"],["东北二人转"],["华数少儿动画"],["华数动画"],["华数喜剧影院"],["华数动作影院"],["华数家庭影院"],["华数星影"],["华数精选"],["华数经典电影"],["华数热播剧场"],["华数魅力时尚"],["华数城市剧场"],["华数军旅剧场"],["华数古装剧场"],["百视通华语影院"],["百视通星光院线"],["百视通全球大片"],["百视通热门剧场"],["百视通谍战剧场"],["百视通青春动漫"],["百视通宝宝动画"],["百视通热门综艺"],["百视通戏曲精选"],["百视通电竞天堂"],["新动力量创一流"],["新动漫"],["新视觉","新视觉HD"],["谍战剧场"],["最强综艺趴"],["青春怀旧剧场"],["古装剧场"],["武侠剧场"],["光影"],["熊猫影院"],["红色经典"],["爱浪漫"],["爱喜剧"],["爱院线"],["爱谍战"],["爱悬疑"],["爱都市"],["爱体育"],["爱奇谈"],["爱科幻"],["爱历史"],["爱旅行"],["爱赛车"],["爱动漫"],["爱幼教"],["爱玩具"],["东北热剧"],["中国功夫"],["军事评论"],["军旅剧场"],["农业致富"],["家庭剧场"],["怡伴健康"],["惊悚悬疑","NEWTV惊悚悬疑"],["明星大片"],["欢乐剧场"],["武搏世界"],["海外剧场"],["潮妈辣婆"],["炫舞未来"],["爱情喜剧"],["精品大剧"],["精品萌宠"],["精品记录"],["超级电视剧"],["超级综艺"],["金牌综艺"],["魅力潇湘"],["IPTV15音乐现场"],["IPTV11戏曲"],["IPTV收视指南"],["IPTV地理"],["IPTV美妆"],["IPTV好学生"],["IPTV国学"],["IPTV美人"],["IPTV5足球"],["IPTV7军事"],["IPTV10解密"],["IPTV14早教"],["IPTV鉴赏"],["IPTV墨宝"],["IPTV爱生活"],["IPTV武术"],["台球"],["高网"]]},{"g":"安徽频道","c":[["安徽影视"],["安徽经济生活"],["安徽公共"],["安徽国际"],["安徽农业科教"],["安徽综艺体育"],["安徽导视"],["合肥新闻"],["合肥公共"],["固镇新闻"],["歙县综合"],["肥西新闻综合"],["黟县综合"],["黄山新闻综合"],["黄山公共生活"],["霍邱新闻综合"],["霍山综合"],["阜南新闻综合"],["铜陵新闻综合"],["铜陵公共"],["金寨综合"],["芜湖生活"],["芜湖新闻综合"],["芜湖公共"],["肥东经济生活"],["繁昌新闻综合"],["繁昌文体娱乐"],["祁门综合"],["石台综合"],["灵璧综合"],["潜山新闻综合"],["滁州科教"],["滁州新闻综合"],["滁州公共"],["湾沚区新闻综合"],["淮南新闻综合"],["淮南公共"],["涡阳新闻综合"],["池州新闻综合"],["池州公共"],["桐城新闻"],["枞阳综合"],["当涂新闻综合"],["广德生活"],["广德新闻综合"],["岳西综合"],["屯溪融媒"],["宿松新闻综合"],["宿州科教"],["宿州新闻综合"],["宿州公共"],["定远综合"],["郎溪综合台"],["淮北综合"],["淮北公共"],["安庆教育"],["安庆公共"],["太和新闻综合"],["南陵新闻综合"],["利辛综合"],["利辛影视"],["凤台综合"],["凤台文化生活"],["六安新闻综合"],["六安公共"],["全椒综合"],["全椒生活"],["休宁新闻综合"],["亳州新闻"],["亳州农村"],["临泉新闻"],["东至新闻综合"]]},{"g":"北京频道","c":[["北京国际"],["北京新闻"],["北京影视","北京影院"],["北京文艺"],["北京体育休闲","体育休闲频道"],["北京卡酷少儿","卡酷动画","卡酷少儿"],["北京生活"],["北京纪实科教","BRTV纪实科教","纪实科教"],["北京财经"],["北京青年"],["淘Baby","北京IPTV淘BABY"],["淘剧场","北京IPTV淘剧场"],["淘电影","北京IPTV淘电影"],["淘娱乐","北京IPTV淘娱乐"],["萌宠TV","北京IPTV萌宠TV"],["房山电视台"],["密云电视台"],["延庆电视台"],["中国交通"],["朝阳融媒"],["清华大学电视台"],["石景山有线"],["通州电视台"]]},{"g":"天津频道","c":[["宁河新闻"],["滨海新闻"],["滨海综艺"],["滨海影院"],["津南一套"],["武清综合"],["天津影视"],["天津教育"],["天津都市"],["天津新闻"],["天津文艺"]]},{"g":"上海频道","c":[["上海外语"],["上海教育"],["上海新闻综合","上海新闻"],["东方财经"],["第一财经","上海第一财经"],["纪实人文"],["上海都市"],["上海金山电视台"],["七彩戏剧"],["动漫秀场"],["哈哈炫动"],["嘉定电视台"],["崇明电视台"],["欢笑剧场"],["法治天地"],["生活时尚"],["都市剧场"],["金山电视台"],["金色频道"],["乐游","乐游频道"]]},{"g":"江苏频道","c":[["江苏城市","江苏城市频道"],["江苏综艺","江苏综艺频道"],["江苏影视","江苏影视频道"],["江苏公共"],["江苏新闻"],["江苏体育休闲"],["江苏国际"],["江苏教育"],["淮安新闻综合"],["连云港新闻综合"],["连云港公共"],["南京新闻综合","南京新闻综合频道"],["南京十八"],["南京教科","南京教科频道"],["南京信息"],["南京娱乐"],["南京少儿"],["南京生活"],["江宁综合","Jiangsu Public & News Channel"],["徐州-1","徐州新闻综合"],["徐州-3"],["徐州-4"],["徐州公共"],["徐州文艺影院"],["徐州经济生活"],["盐城-1","盐城新闻综合"],["苏州文化生活"],["苏州新闻综合"],["苏州生活资讯"],["苏州电影娱乐"],["苏州社会经济"],["东台综合"],["东海新闻"],["仪征新闻综合"],["仪征生活"],["六合新闻综合"],["南通三套公共"],["南通二套社教"],["南通崇川综合","南通新闻综合"],["南通影院娱乐"],["南通新闻综合"],["南通都市生活"],["句容党建"],["句容影院"],["句容新闻综合"],["句容生活"],["大丰公共"],["如东新闻综合"],["姜堰新闻综合"],["宜兴新闻","宜兴新闻综合"],["宜兴紫砂"],["宿迁新闻综合"],["宿迁公共"],["常州公共"],["常州新闻综合"],["常州生活"],["常州都市"],["武进新闻"],["常熟新闻"],["常熟民生"],["张家港新闻综合"],["张家港民生"],["扬中党建民生"],["扬中新闻"],["扬州城市"],["扬州新闻"],["扬州生活"],["扬州邗江"],["新沂新闻"],["新沂生活"],["无锡娱乐"],["无锡新闻综合"],["无锡生活"],["无锡经济"],["无锡都市资讯"],["武进生活"],["武进新闻"],["江宁新闻"],["沛县新闻综合"],["沭阳综合"],["泗洪新闻综合"],["泗阳综合"],["泗阳资讯"],["泰州新闻综合"],["泰州三套影视娱乐"],["海安新闻综合"],["涟水综合","涟水电视台综合"],["淮安公共"],["淮安影院娱乐"],["淮阴影院"],["淮阴综合"],["溧水影视娱乐"],["溧水新闻综合"],["滨海新闻综合"],["盐都综合"],["睢宁三农"],["睢宁生活教育"],["睢宁综合"],["睢宁资讯"],["贾汪新闻"],["贾汪旅游"],["赣榆新闻综合"],["金坛新闻"],["镇江教育民生","镇江二套社会民生"],["镇江新闻综合"],["靖江新闻","靖江新闻综合"],["高邮综合"],["江阴新闻综合"]]},{"g":"江西频道","c":[["江西影视"],["江西公共农业"],["江西教育"],["江西新闻"],["江西经济生活"],["江西都市"],["江西少儿","江西少儿家庭","江西-6","江西-6 少儿"],["赣州公共"],["赣州教育"],["赣州新闻"],["武宁新闻综合"]]},{"g":"广东频道","c":[["广东影视"],["广东珠江","广东珠江B"],["广东体育","广东体育B"],["广东新闻"],["广东少儿"],["广东民生"],["广东公共"],["广东经济科教"],["广东移动"],["南国都市","广州南国都市"],["广州综合","广州新闻","Guangzhou TV"],["广州法治"],["广州影视"],["广州竞赛"],["岭南戏曲","广东岭南戏曲"],["江门综合"],["江门侨乡生活"],["佛山综合"],["佛山城市生活"],["汕头综合"],["汕头经济"],["汕头文旅"],["汕尾综合"],["汕尾生活"],["深圳电视剧"],["深圳财经生活"],["深圳移动电视"],["深圳国际"],["深圳宝安"],["深圳都市"],["深圳少儿"],["茂名综合"],["茂名公共"],["东莞新闻综合","东莞综合","Dongguan Comprehensive News Channel"],["东莞生活资讯"],["惠州1"],["梅州1"],["梅州2"],["韶关新闻综合","韶关综合"],["番禺综合"],["河源公共"],["河源综合"],["河源生活"],["揭阳综合"],["揭阳生活"],["潮州综合"],["潮州民生"],["湛江综合"],["阳江综合"],["阳江生活"],["肇庆生活"],["怀集综合"],["清远新闻综合"],["清远文旅生活"],["云浮综合"]]},{"g":"广西频道","c":[["广西国际","廣西電視台國際頻道"],["广西新闻"],["广西影视"],["广西综艺旅游","广西综艺","Guangxi Variety & Travel Channel"],["广西都市"],["广西移动"],["乐业综合"],["凌云综合"],["凭祥综合"],["北海新闻综合"],["北海经济科教"],["南宁公共"],["南宁影视娱乐"],["南宁新闻综合"],["南宁都市生活"],["贵港新闻综合"],["博白综合"],["天等综合"],["宾阳综合"],["岑溪综合"],["崇左综合"],["巴马综合"],["昭平综合"],["来宾综合"],["桂平综合"],["灌阳新闻综合"],["灵川综合"],["田东综合"],["田阳综合"],["罗城综合"],["融水综合"],["西林综合"],["贺州综合"],["资源电视台"],["那坡综合"],["都安综合"],["钦州公共"],["钦州综合"],["靖西综合"],["龙州综合"],["北海新闻"],["桂林新闻"]]},{"g":"山东频道","c":[["山东少儿"],["山东新闻"],["山东国际"],["山东教育"],["山东农科"],["山东齐鲁"],["山东生活"],["山东体育"],["山东文旅"],["山东综艺"],["济南综合"],["济南都市"],["济南生活"],["济南影视"],["济南娱乐"],["济南少儿"],["济南商务"],["济南教育"],["济南鲁中"],["青州电视台文化旅游"],["青州电视台新闻综合"],["青州电视台生活"],["济宁公共"],["济宁图文"],["济宁教育"],["济宁新闻综合"],["菏泽新闻综合","HZTV-1","菏泽一套新闻综合"],["菏泽经济生活","HZTV-2","菏泽二套经济生活"],["菏泽影视","HZTV-3","菏泽三套影视"],["威海一套新闻综合"],["威海三套海洋"],["威海二套公共"],["东营综合"],["中华美食"],["临沂公共"],["临沂农科"],["临沂新闻综合"],["垦利新闻"],["岱岳综合"],["日照公共"],["日照新闻综合"],["日照科教"],["枣庄公共"],["枣庄教育"],["枣庄新闻综合"],["泰安新闻综合"],["淄博生活"],["淄博都市"],["滨州公共"],["滨州新闻综合"],["潍坊三套公共"],["潍坊二套经济生活"],["潍坊四套科教"],["潍坊新闻综合"],["潍坊滨海新闻综合"],["烟台公共"],["烟台新闻综合"],["烟台经济科技"]]},{"g":"山西频道","c":[["山西影视"],["山西公共"],["山西文体生活"],["山西社会与法治"],["山西经济与科技"],["晋城新闻"],["晋城公共"],["晋中新闻"],["晋中公共"],["万荣综合"],["五台综合"],["原平综合"],["古县综合"],["吉县新闻综合"],["大同1套新闻综合"],["大同2套公共"],["大同3套煤都生活"],["大宁综合"],["太谷新闻综合"],["宁武综合"],["定襄综合"],["屯留综合"],["平遥新闻综合"],["怀仁综合"],["昔阳电视台"],["柳林综合"],["武乡新闻综合"],["汾西综合"],["潞城新闻综合"],["灵石新闻综合"],["祁县新闻综合"],["离石综合"],["襄垣电视"],["襄汾综合"],["运城新闻综合"],["运城科技教育"],["运城公共"],["长子综合"],["长治公共"],["长治教育"],["长治新闻综合"],["长治ETV"],["潞州"],["闻喜综合"],["阳曲综合"],["高平综合"],["黄河电视台"],["黎城综合"]]},{"g":"陕西频道","c":[["陕西影视"],["陕西新闻资讯","陕西新闻资讯频道","陕西新闻咨询"],["陕西都市青春","陕西都市青春频道","都市青春"],["陕西生活"],["陕西公共"],["陕西体育休闲"],["陕西秦腔"],["陕西银龄"],["西安新闻"],["西安都市"],["延安一套新闻综合"],["延安二套公共"],["汉中综合"],["洋县电视台"]]},{"g":"河南频道","c":[["河南新闻频道"],["河南电视剧频道"],["河南都市频道","河南都市","都市频道"],["河南民生频道"],["河南公共频道"],["河南文物宝库","文物宝库"],["河南乡村频道"],["河南武术世界","武术世界","武术"],["河南法治频道"],["收藏天下"],["河南国际"],["河南戏曲"],["睛彩中原"],["移动戏曲"],["象视界"],["梨园频道","梨园","CCTV-梨园"],["洛阳综合"],["洛阳科教"],["洛阳文旅"],["开封新闻综合"],["开封文化旅游"],["信阳综合频道"],["临颍综合"],["义马新闻综合"],["光山综合"],["兰考新闻"],["卫辉综合"],["叶县"],["周口新闻综合"],["周口扶沟"],["固始综合"],["宝丰综合"],["巩义新闻综合"],["新乡县电视台"],["新县综合"],["新蔡综合"],["泌阳新闻综合"],["淅川电视"],["渑池新闻综合"],["温县综合"],["潢川综合"],["焦作综合"],["睛彩焦作"],["焦作教育"],["焦作公共"],["登封综合"],["西华综合"],["郏县综合"],["郸城新闻综合"],["鄢陵综合"],["项城新闻"],["鹤壁综合"],["邓州新闻"],["许昌农业科教"],["许昌公共"],["荥阳综合"],["禹州综合"],["禹州公共"],["睛彩许昌"],["灵宝新闻综合"],["濮阳公共"],["滑县新闻"],["济源电视一套"],["沁阳新闻综合"],["永城综合"],["永城卫建"],["桐柏新闻综合"],["方城一套"],["新野综合"],["新安新闻综合"],["嵩县综合新闻"],["宜阳综合"],["唐河一套"],["内黄综合"],["内乡综合"],["偃师新闻"]]},{"g":"河北频道","c":[["河北影视剧","河北影视"],["河北都市"],["河北农民"],["河北经济"],["河北公共"],["河北少儿科教","少儿科教"],["河北杂技"],["河北靓彩"],["唐山影视"],["鹿泉一套"],["鹿泉二套"],["邯郸科技教育"],["邯郸公共","邯郸公共频道"],["邯郸新闻"],["邢台综合"],["邢台生活"],["衡水公共"],["石家庄城市服务"],["石家庄生活"],["石家庄新闻综合"],["石家庄文化娱乐"],["滦平新闻"],["昌黎综合"],["任丘文娱"],["任丘综合"],["兴隆综合"],["大厂一套"],["平泉影视"],["平泉综合"],["秦皇岛综合"],["清河新闻综合"],["清河经济综艺"],["衡山"],["保定文化娱乐"],["保定新闻综合"],["保定生活健康"],["涿州新闻"]]},{"g":"湖南频道","c":[["湖南都市"],["湖南经视"],["湖南电视剧"],["湖南电影"],["湖南爱晚"],["湖南教育"],["湖南娱乐"],["湖南国际"],["湖南公共"],["茶频道"],["金色学堂"],["湖南金鹰纪实","金鹰纪实"],["长沙新闻综合"],["长沙政法"],["长沙影视"],["长沙女性"],["醴陵综合"],["衡阳新闻综合"],["衡阳公共"],["茶陵新闻综合"],["益阳新闻综合"],["益阳教育"],["益阳公共"],["湘潭新闻综合"],["湘潭县综合"],["湘潭公共"],["湘潭公共都市"],["洪江市综合"],["泸溪电视台"],["汨罗新闻综合"],["江华综合"],["汝城综合"],["永顺综合"],["桑植新闻综合"],["新化新闻综合"],["屈原综合"],["宁乡综合"],["娄底综合"],["保靖时政"],["云溪新闻综合"]]},{"g":"湖北频道","c":[["湖北综合"],["湖北经济","湖北经视"],["湖北生活"],["湖北教育"],["湖北影视"],["湖北公共"],["湖北垄上"],["武汉电视剧"],["武汉科技生活"],["武汉新闻综合","武汉一台新闻综合"],["武汉经济"],["武汉文体"],["武汉外语"],["武汉教育"],["江夏经济生活"],["江夏新闻综合"],["建始综合"],["崇阳新闻综合"],["十堰新闻"],["十堰公共"],["宜昌综合","Yichang Sanxia General Channel"],["保康新闻综合"],["仙桃生活文体"],["仙桃新闻综合"],["麻城综合"],["郧阳新闻综合"],["荆门新闻综合","Jingmen Comprehensive News Channel"],["云梦综合"],["云梦党建农业"],["崇阳综合"],["潜江综合"]]},{"g":"浙江频道","c":[["浙江新闻"],["浙江教科影视","浙江教科","浙江教科影院"],["之江纪录"],["浙江国际","Zhejiang TV International"],["浙江钱江","浙江钱江频道"],["浙江钱江都市","钱江都市"],["浙江经济生活","浙江生活","浙江经济","浙江经视"],["浙江公共","浙江公共新闻"],["浙江教育"],["浙江留学"],["浙江民生休闲","浙江休闲台","浙江民生"],["浙江松阳"],["浙江数码时代"],["杭州综合"],["杭州明珠"],["杭州生活"],["杭州影视"],["杭州青少"],["杭州少体"],["杭州导视"],["宁波TV1"],["宁波TV2"],["宁波TV3"],["宁波TV4"],["嘉兴新闻综合"],["嘉兴公共"],["嘉兴文化影视"],["丽水公共"],["丽水新闻"],["湖州公共","湖州新闻综合"],["湖州新闻综合"],["湖州文化娱乐"],["衢州公共"],["衢州新闻综合"],["金华教育科技"],["金华新闻综合"],["金华公共"],["舟山新闻综合"],["舟山公共"],["温州新闻综合"],["浙江龙泉"],["浙江青田"],["浙江遂昌"],["诸暨新闻综合"],["龙游生活娱乐"],["龙游新闻综合"],["青田电视台"],["镇海先锋影院"],["金华都市农村"],["鄞州二套"],["鄞州一套"],["遂昌新闻综合","遂昌综合"],["象山新闻综合","象山综合"],["衢江新闻综合"],["萧山生活","萧山生活频道"],["萧山电视台","萧山新闻综合","萧山综合","蕭山生活頻道"],["苍南新闻综合"],["舟山群岛旅游"],["舟山公共生活"],["缙云新闻综合","缙云综合"],["绍兴电视台公共"],["绍兴新闻综合"],["绍兴文化影院"],["绍兴文化影视"],["绍兴公共"],["湖州公共民生"],["温州都市生活"],["温州经济科教"],["淳安电视台"],["海盐新闻"],["海宁生活服务"],["海宁新闻综合"],["洞头综合"],["永嘉新闻综合"],["武义新闻综合"],["桐庐综合"],["桐乡新闻综合"],["松阳新闻综合","松阳综合"],["普陀新闻综合","普陀电视台"],["新昌生活频道","新昌生活","新昌休闲影视"],["新昌新闻综合","新昌新聞綜合"],["文成新闻综合","文成综合"],["数码时代"],["德清新闻综合"],["德清文化生活"],["开化新闻综合"],["开化国家公园"],["庆元综合","庆元新闻综合"],["平湖民生休闲"],["平湖新闻综合"],["嵊泗综合"],["嵊泗新闻综合"],["嵊州新闻综合","嵊州综合"],["北仑电视台"],["兰溪新闻综合"],["余杭综合","余杭综合频道"],["余杭未来E","余杭未来E频道"],["余姚综合"],["余姚新闻综合"],["余姚姚江文化","餘姚姚江文化"],["云和新闻综合"],["义乌新闻综合"],["中国蓝新闻"],["东阳影视生活"],["上虞新闻综合","上虞1新闻综合"],["上虞新商都","上虞3新商都"],["上虞文化影院"],["上虞文化影视"],["上虞经济文化","上虞經濟文化"]]},{"g":"重庆频道","c":[["重庆新闻"],["重庆少儿"],["重庆汽摩"],["重庆时尚购物"],["璧山综合"],["铜梁综合"],["荣昌综合"],["江津经济生活"],["潼南综合"],["涪陵电视台"],["江津新闻综合"],["武隆综合"],["大足综合"],["垫江综合"],["北碚综合"],["中国交通重庆"],["万州综合"],["万州三峡移民"]]},{"g":"云南频道","c":[["云南综合"],["云南都市"],["云南娱乐"],["云南公共"],["云南少儿"],["云南澜湄国际"],["昆明公共"],["昆明影视综艺"],["昆明新闻综合"],["昆明科学教育"],["昆明经济生活"],["丘北电视台"],["元阳综合"],["安宁综合"],["宾川一套"],["屏边综合"],["峨山电视"],["巧家综合"],["广南电视台"],["开远综合"],["彝良综合"],["文山州公共"],["文山州新闻综合"],["施甸综合"],["易门综合"],["普洱公共"],["普洱新闻综合"],["梁河综合"],["永善综合"],["江川综合"],["泸水综合"],["瑞丽综合"],["盈江综合"],["石屏综合"],["砚山电视台"],["福贡综合"],["红塔电视台"],["红河县综合"],["红河州新闻综合"],["绥江综合"],["腾冲综合"],["芒市综合"],["蒙自综合"],["西双版纳公共"],["西双版纳综合"],["贡山综合"],["通海电视台"],["金平综合"],["陇川综合"],["马关电视台"],["麻栗坡电视台"],["楚雄新闻","Chuxiong News Channel"]]},{"g":"贵州频道","c":[["贵州2"],["贵州3"],["贵州4"],["贵州5"],["贵州6"],["贵州移动电视"],["松桃新闻"],["石阡新闻"],["七星关电视台"],["道真新闻综合"],["凤冈综合"],["黔南一套"],["黔南二套"],["安顺新闻频道"],["安顺公共频道"],["清镇新闻综合"],["思南综合"],["松新闻"],["罗甸综合"],["湄潭综合"],["仁怀新闻"],["遵义新闻综合"],["遵义公共"]]},{"g":"四川频道","c":[["四川影视"],["四川经济"],["四川新闻"],["四川乡村"],["四川文化"],["四川科教"],["峨眉电影"],["四川妇女儿童"],["成都综合"],["成都经济"],["成都都市"],["成都影视"],["成都公共"],["成都少儿"],["成都高新","成都高新电视"],["蓉城先锋"],["i成都"],["收视导视"],["大爱四川"],["大爱旅游"],["大爱生活"],["大爱时尚"],["天元围棋"],["乐龄学堂"],["万源新闻综合"],["东兴综合"],["乐山公共"],["乐山文旅"],["乐山新闻综合"],["乐至综合"],["九寨沟新闻综合"],["井研综合"],["什邡新闻"],["仁和综合"],["仁寿综合"],["凉山新闻综合"],["利州综合"],["前锋电视台"],["剑阁综合"],["北川电视一套"],["南充公共"],["南充新闻"],["南充科教"],["双流综合"],["名山综合"],["大竹新闻综合"],["大竹阳光政务"],["夹江新闻综合"],["威远新闻综合"],["宁南综合"],["安岳综合"],["宜宾公共"],["宜宾新闻综合"],["宜宾导视"],["宝兴综合"],["小金综合"],["岳池新闻综合"],["峨边电视台"],["平昌新闻综合"],["平武综合"],["广元公共"],["广元综合"],["广安公共"],["康定综合"],["开江新闻综合"],["德阳公共"],["德阳文旅"],["德阳新闻综合"],["攀枝花新闻综合"],["攀钢新闻"],["攀枝花文旅"],["旺苍新闻综合"],["昭化综合"],["朝天综合"],["松潘新闻综合"],["梓潼新闻综合"],["武胜综合"],["汉源综合"],["江油新闻综合"],["汶川新闻综合"],["沐川综合"],["沙湾综合"],["泸县新闻综合"],["渠县新闻综合"],["珙县综合"],["甘孜综合"],["甘洛综合"],["盐亭综合"],["石棉综合"],["筠连综合"],["纳溪新闻"],["绵阳科技"],["绵阳综合"],["茂县综合"],["荥经综合"],["营山电视台"],["蓬安新闻综合"],["蓬溪新闻综合"],["西昌综合"],["遂宁公共"],["遂宁新闻综合"],["邻水新闻综合"],["金堂电视台"],["金川乡村"],["金川新闻综合"],["金阳综合"],["阿坝文艺"],["阿坝综合"],["隆昌新闻综合"],["雅安新闻综合","新闻综合"],["雅安公共"],["雅安雨城频道","雅安雨城"],["青神综合"],["马尔康综合"],["马边电视台"],["龙泉驿新闻综合"],["简阳新闻"],["龙泉新闻","龙泉新闻综合"],["郫都新闻"],["蒲江综合"],["彭州综合"],["青白江综合"],["邛崃综合"],["温江新闻"],["新都综合"],["新津综合"],["安州综合"],["涪城综合"],["米易综合"],["盐边综合"],["苍溪综合"],["青川综合"],["古蔺新闻"],["合江新闻"],["叙永综合"],["广汉综合"],["旌阳综合"],["罗江综合"],["绵竹综合"],["中江新闻"],["江安综合"],["南溪综合"],["屏山新闻"],["兴文综合"],["叙州新闻","叙州新闻综合"],["长宁综合"],["宁新综合"],["遂宁文化"],["安居综合"],["大英新闻"],["金口河综合"],["犍为新闻"],["五通桥综合"],["内江综合"],["内江公共"],["隆昌综合"],["资中综合"],["阆中综合"],["南部综合"],["西充新闻"],["仪陇新闻"],["达州新闻"],["达州文化"],["达州导视"],["达川新闻"],["通川综合"],["宣汉新闻"],["芦山新闻"],["天全新闻"],["广安综合"],["华蓥综合"],["巴中综合"],["巴中文旅"],["巴州电视"],["恩阳新闻"],["南江综合"],["通江综合"],["眉山综合"],["眉山文旅乡村"],["丹棱新闻"],["洪雅新闻"],["彭山综合"],["德昌综合"],["会理新闻"],["木里综合"],["冕宁综合"],["普格新闻"],["喜德综合"],["越西综合"],["资阳新闻"],["雁江综合"],["自贡新闻"],["自贡文化生活"],["富顺综合"],["荣县综合"],["泸定综合"],["黑水新闻"],["三台一套"],["高县一套"],["峨眉山综合"],["崇州"],["大邑"],["都江堰综合"],["金牛综合"],["精品导视"],["精品导视2"],["川网导视"],["青羊电视"]]},{"g":"黑龙江频道","c":[["黑龙江文体"],["黑龙江新闻法治","黑龙江新闻"],["黑龙江公共"],["黑龙江影视"],["黑龙江都市"],["黑龙江少儿"],["黑龙江科教"],["哈尔滨新闻综合","Harbin Comprehensive News Channel"],["哈尔滨影视","Harbin Movie Channel"],["哈尔滨都市资讯","哈尔滨资讯","哈尔滨都市咨询"],["哈尔滨生活"],["哈尔滨娱乐"],["大庆新闻综合"],["大庆公共"],["鹤岗新闻综合"],["鹤岗公共"],["七台河新闻综合"],["七台河公共"],["七台河民生社教"],["佳木斯新闻综合"],["萝北综合"],["甘南县综合"],["齐齐哈尔新闻综合"],["齐齐哈尔经济法制"],["双鸭山综合"]]},{"g":"吉林频道","c":[["吉林新闻综合","吉林市新闻综合"],["吉林综艺文化"],["吉林都市"],["吉林生活"],["吉林影院"],["吉林乡村"],["吉林公共"],["吉林教育"],["东北戏曲频道"],["长影频道"],["长春综合"],["延边-1","延边新闻综合"],["延边-2","延边2"],["龙井综合","龙井","龙井-1"],["白山新闻综合","长白山电视台"],["白山旅游生活","白山公共","白山-2","白山-2 旅游生活"],["白城新闻综合","Baicheng TV"],["靖宇综合","靖宇"],["辽源新闻综合","辽新闻综合"],["德惠综合"],["九台综合"],["长白朝语"],["敦化一套"],["珲春新闻综合","珲春新闻"],["梅河口综合"],["桦甸综合频道","桦甸综合","桦甸"],["磐石综合频道","磐石","磐石综合"],["舒兰新闻综合","舒兰新闻"],["东丰综合","东丰"],["前郭综合"],["松原新闻综合"],["双辽综合"],["辉南新闻综合","辉南新闻"],["柳河综合","柳河"],["集安综合"],["通化新闻综合","通化县综合","通化县","通化新闻","Tonghua TV"],["汪清综合"],["四平-1","Siping TV","四平新闻综合"],["Bacan Te Veo"]]},{"g":"辽宁频道","c":[["辽宁北方"],["辽宁影视剧","辽宁影视"],["辽宁教育青少","辽宁青少"],["辽宁生活"],["辽宁经济"],["辽宁都市"],["辽宁公共"],["朝阳教育"],["朝阳新闻综合"],["锦州一套新闻综合"],["锦州二套教育"]]},{"g":"福建频道","c":[["福建文体"],["福建新闻","福建综合"],["福建电视剧"],["福建经济"],["福建旅游"],["福建体育"],["福建少儿"],["福建公共"],["福州少儿"],["福州影院"],["福州生活"],["福州综合"],["三明公共"],["三明新闻综合"],["云霄综合"],["宁化电视一套"],["将乐综合"],["建宁综合"],["德化新闻综合"],["新罗电视一套"],["晋江电视台"],["永安综合"],["永泰综合"],["泰宁新闻"],["漳州新闻综合"],["漳浦综合"],["石狮综合"],["霞浦综合"],["龙岩公共"],["龙岩新闻综合"],["莆田综合"],["泉州新闻综合"],["宁德新闻综合"],["南平综合"],["平潭综合"]]},{"g":"海南频道","c":[["海南新闻"],["海南自贸"],["海南文旅"],["海南少儿"],["海南公共"],["海南社会与法"],["海南经济"],["海口综合"],["海口生活娱乐"],["海口城乡经济"]]},{"g":"甘肃频道","c":[["甘肃影视"],["甘肃经济"],["甘肃都市"],["甘肃文化"],["甘肃公共应急"],["甘肃少儿"],["兰州新闻综合","Lanzhou Comprehensive News Channel"],["兰州文旅频道","Lanzhou Culture & Tourism Channel"],["临夏州公共"],["临夏州综合"],["临夏市电视台"],["临洮综合"],["临潭综合"],["华亭综合"],["华池综合"],["卓尼综合"],["合水综合"],["嘉峪关综合"],["夏河综合"],["天水公共"],["天水新闻综合"],["天祝综合"],["宁县综合"],["定西公共"],["定西综合"],["岷县综合"],["崆峒综合"],["崇信综合"],["平凉公共"],["平凉新闻综合"],["庆城综合"],["张掖公共"],["张掖新闻综合"],["徽县综合"],["成县综合"],["敦煌综合"],["景泰综合"],["正宁综合"],["武威凉州"],["武威新闻"],["武山综合"],["武都综合"],["民乐新闻"],["民勤综合"],["永昌综合"],["永靖综合"],["泾川综合"],["渭源新闻"],["漳县新闻综合"],["灵台综合"],["玉门综合"],["玛曲综合"],["环县综合"],["瓜州综合"],["甘南综合"],["白银公共"],["白银文化教育"],["白银综合"],["皋兰综合"],["碌曲综合"],["礼县综合"],["秦安综合"],["积石山综合"],["肃北综合"],["肃州综合"],["舟曲新闻"],["西和综合"],["西峰综合"],["迭部综合"],["通渭综合"],["酒泉公共"],["酒泉综合"],["金塔综合"],["金川综合"],["金昌综合"],["镇原综合"],["阿克塞综合"],["陇西综合"],["靖远综合"],["静宁综合"],["高台综合"]]},{"g":"宁夏频道","c":[["宁夏公共"],["宁夏经济"],["宁夏少儿"],["宁夏电视台影视"],["宁夏文旅"],["银川生活"],["银川公共"],["银川文体"],["吴忠综合"],["吴忠公共"],["中宁综合"],["石嘴山综合"]]},{"g":"内蒙古频道","c":[["内蒙古新闻综合","内蒙古综合","内蒙新闻"],["内蒙古经济生活"],["内蒙古少儿","内蒙少儿"],["内蒙古文体娱乐"],["内蒙古农牧","内蒙农牧","Nei Monggol TV"],["内蒙古蒙语频道II","内蒙古蒙语文化","内蒙古蒙语频道"],["乌兰察布新闻综合"],["包头新闻综合"],["包头生活服务"],["呼和浩特新闻综合"],["巴彦淖尔新闻综合"],["赤峰新闻综合","Chifeng Comprehensive News Chanel"],["鄂尔多斯新闻综合"]]},{"g":"西藏频道","c":[["Xizang TV Chinese"]]},{"g":"新疆频道","c":[["新疆-3","Xinjiang TV 3"],["新疆-5","Xinjiang TV 5"],["新疆-6","新疆汉语影视"],["新疆-7","新疆汉语体育健康"],["新疆-8","Xinjiang TV 8"],["KSTV-2","Xinjiang TV 2"],["克拉玛依汉语综合"],["克拉玛依维语综合"],["克拉玛依影剧场"],["克拉玛依生活娱乐"],["克拉玛依新闻"],["哈密一套"],["哈密二套"],["哈密三套"],["伊犁汉语综合"],["伊犁维吾尔"],["伊犁哈萨克"],["伊犁经济法制"],["裕民汉语"],["裕民哈语"],["兵团四师可克达拉综合"],["兵团五师双河新闻综合"],["兵团五师双河影视","兵团五师双河影"],["兵团七师胡杨河新闻综合"],["兵团八师石河子新闻综合"],["兵团八师石河子影视文体"],["兵团八师石河子经济生活"],["兵团八师石河子教育"],["兵团十三师新星综合"],["兵团十四师昆玉综合"],["奎屯汉语"],["奎屯哈萨克语"],["伊宁汉语综合"],["伊宁维吾尔语"],["昭苏哈语"],["昭苏汉语"],["霍尔果斯综合"],["玛纳斯综合"],["克拉玛依影视"],["可克达拉综合"],["奎屯汉语综合"],["巴音郭楞州"],["石河子影视文体"],["石河子教育"],["石河子新闻综合"],["石河子经济生活"]]},{"g":"青海频道","c":[["西宁新闻综合"],["西宁生活服务"],["玉树新闻"],["海西州综合"],["德令哈综合"],["门源综合"],["贵南综合"],["化隆综合"],["民和综合"],["兴海综合"],["大通电视台"],["湟中电视台"],["青海经视"],["青海都市"],["青海综合"]]},{"g":"港·澳·台","c":[["凤凰中文","凤凰卫视中文台","凤凰中文B","凤凰中文D"],["凤凰资讯","凤凰卫视资讯台","凤凰资讯B","凤凰资讯D","凤凰资讯台"],["凤凰香港","凤凰卫视香港台","凤凰香港B","凤凰香港D","凤凰香港台","凤凰香港高清"],["凤凰电影"],["RTHK 31","RTHK31","RTHK31B","RTHK TV 31"],["RTHK 32","RTHK32","RTHK32B"],["RTHK 33","RTHK33"],["RTHK 34"],["RTHK 35"],["ViuTV","Viu 頻道","ViuTVB","VIUTV"],["ViuTV6","VIUTVSIX","ViuTVsix","ViuTVsixB"],["澳門Macau"],["澳门卫视"],["澳门资讯"],["澳门综艺","澳门综艺B","澳视综艺"],["澳门莲花","澳门莲花B"],["莲花卫视"],["澳视澳门","澳视澳门B","澳亚卫视台"],["澳视卫星","澳视卫星B"],["澳门体育","澳门体育B","澳视体育"],["香港卫视"],["人间卫视","Beautiful Life TV"],["美亚C+"],["美亚电影台","美亞電影台"],["TVB Plus"],["TVB1"],["TVB J1","TVBJ1","TVBj1B"],["TVB J2"],["翡翠剧集台","翡翠剧集台B"],["翡翠台","华丽翡翠台","华丽翡翠台B","翡翠台B","TVB翡翠台 1080P"],["翡翠台4K"],["黄金翡翠台"],["黄金华剧台"],["明珠台","TVB明珠台"],["HOY TV","HOY TVB"],["HOY资讯台","HOY资讯台B"],["HOY 77","HOY77"],["HOY 76","HOY国际财经台","HOY国际财经台B","HOY 國際財經台"],["HOY 78","HOY78"],["八度空间","八度空间B"],["龙祥电影"],["龙华电影","龙华电影B","龍華電影"],["龙华经典","龙华经典台","龙华经典B","龍華經典"],["龙华日韩","龍華日韓台","龙华日韩台","龙华日韩B","龍華日韓"],["龙华戏剧","龙华戏剧B","龍華戲劇"],["龙华洋片","龙华洋片B","龍華洋片"],["龙华卡通","龙华卡通B","龍華卡通"],["龙华偶像","龙华偶像B","龍華偶像"],["金光布袋戏","金光布袋戲"],["华丽翡翠台","华丽翡翠台1","华丽翡翠台2"],["有線新聞","有线新闻"],["有線財經信息台"],["TVB亚洲武侠","亚洲武侠电视台","亚洲武侠B","亚洲武侠"],["TVB娱乐新闻台","娛樂新聞台"],["TVB无线新闻台","无线新闻台","无线新闻台1","无线新闻台2","无线新闻台B","无线新闻"],["TVB星河","星河台","TVB星河1","TVB星河2","TVB星河3","TVB星河B"],["TVBS欢乐台","TVBS歡樂台"],["TVBS新闻台","TVBS新聞"],["TVBS精采台"],["千禧經典","TVB千禧經典台","千禧经典台","千禧經典台"],["天映频道","天映頻道","天映频道B"],["天映經典","天映经典频道","天映经典台","天映经典台2","天映经典B","天映经典"],["爱奇艺","IQIYI","iQIYI"],["影迷纪实台","影迷數位電影台"],["影迷數位電影台"],["东森电影","東森電影台"],["東森新聞","东森新闻","东森新闻台","东森综合台"],["東森財經新聞台","东森财经新闻台","东森财经新闻"],["东森戏剧","東森戲劇台","东森戏剧台"],["东森洋片","東森洋片台"],["东森美洲"],["东森超视"],["東森幼幼台"],["寰宇新聞台","寰宇新闻台"],["寰宇財經台"],["MOMO親子台"],["面包台","Bread TV面包台"],["台视"],["台视新闻","台視新聞"],["台视综合"],["台视财经"],["民视"],["民視影劇","民视影剧","民視影劇台"],["民视综艺"],["民視台灣台"],["民視新聞","民視新聞台","民视新闻台","民视新闻HD"],["民視旅遊台"],["民视南闽"],["民視第一台"],["台视新聞"],["台湾原住民电视台","Taiwan Indigenous TV"],["公視"],["公视戏剧","公視戲劇"],["华视","华视HD"],["华视新闻","華視新聞"],["采昌","采昌影剧台","采昌影劇台"],["靖天映畫","靖天映画"],["靖天戏剧台","靖天戲劇台"],["靖天電影台","靖天电影"],["靖洋戲劇台"],["靖天卡通台"],["靖天日本台"],["靖天綜合台"],["靖天育樂台"],["靖天資訊台","靖天资讯"],["靖洋卡通Nice Bingo"],["amc电影台","AMC电影","amc電影台"],["经典电影台","經典電影台"],["中國電影頻道"],["電影原聲台CMusic"],["纬来电影台","緯來電影台"],["纬来戏剧台","緯來戲劇台"],["纬来体育台","纬来体育"],["纬来日本台"],["纬来育乐台","纬来育乐"],["纬来精采","纬来精彩台"],["纬来综合台"],["龙祥时代"],["三立綜合台"],["三立戏剧"],["三立新闻","三立iNEWS","三立新闻台"],["中天新闻","中天新闻台"],["中天综合"],["中天娱乐","中天娱乐台"],["中視","中视"],["中视新闻","中視新聞"],["中视菁采","中视菁采台"],["中视经典","中視經典"],["中天亞洲台","中天亚洲台"],["now新闻台","NOW新闻台","NOW新闻台B","Now新聞台","N新闻台"],["now星影台"],["now爆谷台"],["TVB黃金華劇","黃金華劇台"],["Now财经台"],["耀才财经"],["華藝中文台"],["八大精彩台"],["八大綜藝台"],["八大綜合台","八大综合台"],["八大戏剧台"],["鏡電視新聞台","镜电视新闻"],["HBO"],["CH5","CH5B"],["CH8","CH8B"],["CHU","CHUB"],["CMusic"],["Animax"],["Astro AEC"],["Astro AOD"],["爱奇艺","Astro iQIYI"],["Astro 欢喜台","欢喜台"],["AXN"],["CinemaWorld"],["ROCK Action"],["Love Nature"],["NewsWorld"],["NOW 70s"],["NOW 80s"],["愛爾達體育1台"],["愛爾達體育2台"],["愛爾達體育3台"],["愛爾達體育4台"],["智林體育台"]]},{"g":"体育频道","c":[["广东体育"],["纬来体育"],["五星体育","五星体育B"],["劲爆体育"],["超级体育"],["精品体育"],["深圳体育"],["辽宁体育"],["成都体育"],["天津体育"],["江苏体育"],["吉林篮球"],["足球频道"],["魅力足球"],["睛彩广场舞"]]},{"g":"动画频道","c":[["经典动画大集合"],["优漫卡通","优漫卡通频道"],["黑莓动画"],["金鹰卡通"],["嘉佳卡通"],["炫动卡通"],["少儿动画"],["卡酷动画"],["青春动漫"],["中录动漫"],["宝宝动画"],["CN卡通"],["睛彩少儿"],["24H国漫热播"],["浙江少儿"],["河北少儿科教"],["七龙珠"],["火影忍者"],["海绵宝宝"],["中华小当家"],["斗破苍穹玄幻剧"],["猫和老鼠"],["经典动漫"],["蜡笔小新"],["漫画解说"],["梦工厂动画","DreamWorks夢工廠動畫"],["精选动漫台","精選動漫台"],["經典卡通台"]]},{"g":"虎牙","c":[["电影_邵氏"],["电影_周星驰","周星星","周星驰电影","电影周星星"],["电影_林正英","林正英电影","林正英影院"],["电影_周润发","周润发电影"],["电影_甄子丹","甄子丹电影"],["电影_成龙","成龙电影"],["电影_王晶","王晶电影"],["电影_沈腾","沈腾电影"],["电影_黄渤","黄渤电影"],["电影_古天乐","古天乐电影"],["电影_强森","强森电影"],["电影_漫威"],["电影_宇宙","宇宙科幻合集"],["电影_怪兽","怪兽电影"],["电影_武侠","武侠电影"],["电影_警匪"],["电影_罪犯","罪犯电影"],["电影_枪战","枪战电影"],["电影_赛车"],["电影_推荐"],["电影_热血"],["电影_盗墓"],["电影_贺岁","电影贺岁","贺岁电影"],["电影_玄幻","玄幻电影"],["电影_谍战","电影谍战","谍战电影"],["电影_喜剧"],["电影_港片"],["电影_国产"],["电影_李连杰","李连杰电影"],["电影_洪金宝"],["电影_梁家辉","电影梁家辉"],["电影_许冠英"],["电影_刘德华","刘德华电影","电影刘德华"],["电影_斯坦森"],["电影_八点档","电影八点档"],["电影_功夫片","功夫电影","电影功夫片"],["电影_黑帮片"],["电影_丧尸片","电影丧尸片"],["电影_灾难片"],["电影_谍战片","电影谍战片"],["电影_战争片","战争电影","电影战争片"],["电影_犯罪片","电影犯罪片"],["电影_古装片"],["电影_高分动作","电影高分动作"],["电影_动作电影","电影动作电影"],["电影_搞笑喜剧","电影搞笑喜剧"],["电影_喜剧专场","电影喜剧专场"],["电影_欢笑影院"],["电影_国产悬疑"],["电影_快意江湖"],["电影_黑帮斗争"],["电影_古墓系列"],["电影_嫣然影厅","电影嫣然影厅"],["电影_女神系列"],["电影_经典女神"],["电影_许氏三杰"],["电影_经典港片"],["电影_镖行天下"],["电影_喜乐影院"],["电影_蘑菇影厅"],["电影_搞笑恐怖"],["电影_死神来了"],["唐诡之西行"],["剧集_老三国","新三国"],["剧集_三国演义","三国演义"],["剧集_新三国"],["剧集_新水浒","水浒传"],["剧集_纪晓岚"],["剧集_庆余年"],["康熙微服私访记"],["剧集_雍正王朝"],["芈月传"],["如懿传"],["亮剑"],["剧集_士兵突击","士兵突击"],["剧集_爱情公寓"],["剧集_家有儿女"],["剧集_武林外传"],["剧集_地下交通站"],["剧集_邻里一家亲"],["搞笑_陈翔六点半"],["剧集_TVB剧场1"],["剧集_TVB剧场2"],["情满四合院"],["鸡毛飞上天"],["西游记2"],["大宋提刑官"],["笑看风云"],["陀枪师姐"],["刑事侦缉档案"],["妙手仁心"],["野蛮奶奶"],["扫黄先锋"],["洗冤录"],["西游记"],["笑傲江湖"],["天龙八部","天龙八部D"],["射雕英雄传","射雕英雄传D"],["鹿鼎记"],["九阴真经"],["封神榜"],["楚汉骄雄"],["金枝欲孽"],["大唐双龙传"],["解说_电影狂人"],["解说_鹿哥电影"],["解说_斌哥漫说"],["解说_续哥说电影"],["解说_小川侃电影"],["解说_阿钙扒瞎"],["解说_阿良说剧"],["解说_鱼丸电影"],["解说_阿斗说电影"],["解说_扁豆看电影"],["解说_乌贼说电影"],["解说_大象放映室"],["解说_科幻梦工场"],["解说_亮哥讲电影"],["解说_越哥说电影"],["解说_小冉看电影"],["解说_嫦娥撩电影"],["解说_阿翔说电影"],["解说_疯狂解说家"],["解说_虎妞说电影"],["解说_顾久撩电影"],["解说_涵哥评电影"],["解说_俗哥看电影"],["解说_老皮讲电影"],["解说_默爷侃电影"],["解说_冷君说电影"],["解说_老炮说电影"],["解说_刘老师说电影"],["解说_恐怖电影解说"],["周星驰"],["刘德华"],["好先生"],["庆余年"],["欢乐综艺"],["万合出品"],["邵氏影院"],["吃米滴虫"],["高分电影"],["豆瓣高分"],["漫威影院"],["特辑电影"],["粤语电影"],["国产电影"],["精彩电影"],["喜剧电影"],["恐怖电影"],["恐怖鬼怪"],["童年阴影"],["惊悚电影"],["华语影视"],["神乐影视"],["周末影院"],["周末电影"],["兔子影厅"],["冰冰影厅","冰冰影剧"],["刀刀影院"],["奶虫影院"],["贝爷壹厅"],["贝爷贰厅"],["贝爷叁厅"],["凌儿影院"],["云宝影院"],["花卷影院"],["菜园小饼"],["米娅影院"],["橙記港剧","橙记港剧"],["大宝影视"],["蚂蚱影视"],["怡寶影视"],["圆子影视"],["贝贝影视"],["可乐影视"],["萌牛影视"],["兔兔影视"],["无双影视"],["下饭神剧"],["古装神剧","古装武侠"],["晚湾影视"],["酒染影视"],["芊珏影视"],["热门港剧"],["盗墓剧集"],["金庸武侠"],["国产剧集"],["国产剧场"],["爱情公寓"],["经典剧集"],["李卫当官"],["龙门镖局"],["雍正王朝"],["雍正帝王"],["隋唐演义"],["大宋神探"],["音乐欣赏"],["舌尖美食"],["篮球人物"],["史君说剧"],["史剧解说"],["老秦说剧"],["老蔡解说"],["长片短解"],["宇哥解说"],["夜魔人老王"],["皮皮看动漫"],["开心锤动漫"],["拳叔二次元"],["老邪说电影"],["洗碗君解说"],["百晓生说剧"],["百晓生解说"],["小司马说剧"],["小司马解说"],["星君说电影"],["刘哔讲电影"],["老王说电影"],["贤于说电影"],["牛叔说电影"],["侃片大师兄"],["虫哥说电影"],["电影迷小雅"],["1900影剧室"],["刘老师说电影"],["来呀官人解说"],["科幻Fans布玛"],["小片片说大片"],["大片片说小片"],["火龙果说电影"],["天天影社"],["国外电影1","倚天屠龙记"],["蜘蛛侠","电影蜘蛛侠"],["康熙王朝"],["延禧攻略"],["新水浒传"],["与凤行"],["陈情令"],["乌龙闯情关"],["铁齿铜牙纪晓岚"],["大秦赋"],["流水迢迢"],["玫瑰的故事"],["雪豹"],["创世纪"],["法政先锋"],["野蛮亲家"],["无心法师"],["狄仁杰","狄仁杰电影"],["鬼吹灯之云南虫谷"],["鬼吹灯之怒晴湘西"],["鬼吹灯之龙岭迷窟"],["名侦探柯南"],["倩女幽魂人间道"],["倩女幽魂妖魔道"],["倩女幽魂道道道"],["龙门飞甲"],["韩国电影1"],["韩国电影2"],["飞碟之谜01"],["飞碟之谜02"]]},{"g":"斗鱼","c":[["可乐影院"],["刘哔电影"],["世界未解之谜","世界未解之谜M"],["阿七点歌台"],["西游记续集"],["碎片记"],["火龙果讲电影本人"]]},{"g":"YY","c":[["国产大片电影"],["国产动作电影"],["国内功夫大片"],["国内经典玄幻"],["欢乐一起看"],["淮水情深深"],["亲爱的味道"],["经典大片合集"],["热门喜剧"],["国内喜剧"],["喜剧闹翻天"],["经典喜剧","憨豆先生-经典喜剧"],["就是闹着玩的","国产电影-就是闹着玩的"],["喋血曼谷","四平青年喋血曼谷"],["唐门双雄战神犼"],["呆萌飞行员"],["哮天犬闹龙宫"],["变形金刚"],["精彩动作电影"],["痞子殿下","痞子殿下（普通话）"],["向日葵的爱恋-泰剧"],["辣警狂花"],["苍狼特战突击"],["精武英雄"],["紧急营救"],["神偷次世代"],["监狱风云2"],["我是谁"],["小敏"],["决战中的较量才是神仙打架"],["流金岁月"],["忘年恋","老夫少妻搞笑忘年恋"],["渴望"],["黄大妮"],["夏洛特烦恼"],["超精彩武打场景"],["娘亲舅大"],["情满四合院","情满四合院D"],["学生兵"],["狂飙"],["大时代"],["儿大不由爹"],["天道"],["以家人之名"],["爱在璀璨时"],["你是我的荣耀"],["正阳门下"],["最美的青春"],["大江大河"],["我的前半生"],["如果岁月可回头"],["横行不霸道"],["父母爱情"],["闯关东"],["叛逆者"],["伪装者"],["新世界"],["河山"],["风筝"],["野山鹰"],["远去的飞鹰"],["二炮手"],["火凤凰"],["我的父亲我的兵"],["抗日神片"],["兴风作浪"],["回家的诱惑"],["公主嫁到"],["宝莲灯前传"],["仙剑风云再起"],["宫锁珠帘"],["宰相刘罗锅"],["新白娘子传奇","新百娘子传奇D"],["大明王朝"],["大汉贤后卫子夫"],["隋唐英雄传"],["钟馗传说"],["武林外传"],["神雕侠侣","你最爱的小龙女-神雕侠侣","神雕侠侣D"],["神探狄仁杰第一部"],["神探狄仁杰Ⅱ","双月之城-国漫"],["狄仁杰"],["狄仁杰智破红瞳谜案"],["少年包青天第一部"],["少年包青天第三部"],["少年四大名捕"],["特派先锋出击"],["热血战争巨作"],["你的回忆有我吗"],["谈判专家"],["黑豹"],["灭绝"],["灌篮高手"],["速度与激情全集"],["复仇者联盟全季"],["国外科幻"],["机械战警1-3"],["杀机四伏"],["飓风营救"],["银河护卫队"],["阿凡达"],["侏罗纪世界"],["铁甲狂猴雷霆"],["现代战争教科书神作"],["珍珠港"],["末日电影合集"],["怪兽片合集"],["怪兽马提尼电影"],["战俘营大逃亡"],["打破第四面墙"],["了不起的萝莉小玲"],["外星人入侵"],["非典型恋爱"],["雷霆再起"],["雷霆救兵","雷霆救兵（普通话）"],["明天和你","明天和你-韩剧"],["法证先锋"],["缺宅男女","缺宅男女-精彩港剧"],["金玉满堂","金玉满堂：精彩港剧"],["陪你一起看好剧"],["高分港剧合集"],["炊事班的故事"],["炊事班的故事III"],["欢乐集结号"],["欢乐集结号-每天笑不停"],["欢乐集结号4"],["欢乐集结号58-70"],["本山快乐营"],["本山快乐营2"],["巩汉林春晚小品合集"],["爆笑小品"],["爆笑小品大合集"],["笑傲帮"],["笑傲江湖 第1季"],["间接伤害"]]},{"g":"国际频道","c":[["动物星球"],["CGN中文台","CGNTV Chinese"],["发现中国","Discovering China"],["亚洲新闻"],["亚洲新闻台"],["亚洲卫视","Hunan Economy Channel","ASTV"],["CNA"],["CNN","新加坡CNA"],["CAN-19","CAN TV19"],["CAN-21","CAN TV21"],["CAN-36","CAN TV36"],["China Travel"],["CB-TV","CB TV Michoacan"],["CBS"],["CCI-TV","CCI Channel"],["Cafe Film"],["Channel 7"],["Channel 12"],["Channel Fight"],["Channel One +8"],["Channel S"],["Channel Y"],["CharityTV"],["DD Assam"],["DD Bangla"],["DD Girnar"],["DD Goa"],["DD Haryana"],["DD Himachal Pradesh"],["DD India"],["DD Jharkhand"],["DD Malayalam"],["DD National"],["DD News"],["DD Odia"],["DD Sahyadri"],["DD Saptagiri"],["DD Sports"],["DD Tamil"],["DD Tripura"],["NBC News Now"],["Newsmax"],["Pet Club TV"],["RT Arabic（阿语）"],["RT Balkan （塞尔维亚语）"],["RT DE（德语）"],["RT Doc-Русский（俄语纪录）"],["RT Documentary（英语纪录）"],["RT Español（西语）"],["RT Français（法语）"],["RT News（英语国际）"],["RTM Apetito"],["RTM Aura"],["RTM Fitrah"],["RTM Junior"],["RTM Lead"],["RTM Roll"],["RTM Snap"],["TRT World"],["Trace Sports"],["VOA美国之音"],["Wild Earth"],["WionNews"],["ZooMoo"],["半岛新闻"],["红牛REDBULL TV"],["BCN Gospel TV"],["BEATTV"],["BET x Tyler Perry Comedy"],["BFM2"],["BHTV-10","BHTV10"],["BHTV-35","BHTV35"],["BRIDGE Classic"],["BRTV"],["BVC"],["BX1"],["Bajo Techo TV"],["Balabol"],["Balikpapan TV"],["Baraza TV"],["Bark TV"],["Belarus-24"],["Bellavision"],["Bendicion Channel"],["Benie TV"],["Guaro TV"],["Gubernia Samara"],["HD365 TV"],["HLAJ-DTV"],["HLAM-DTV"],["HLAO-DTV"],["HLCT-DTV"],["HTSpor TV"],["Heliconia Radio TV"],["High News"],["Highway Thru Hell"],["Hot Ones"],["Hot Wheels Action"],["IBN TV"],["ICN Digital"],["IRIB1"],["IRIB2"],["IRIB4"],["IRINN 2"],["Kanal 3"],["Kanal 12"],["Kanal 15"],["Kanal 26"],["MBC 1"],["MBC 1 Egypt"],["MBC 1 USA"],["MBC 5"],["MBC Drama"],["MBC Iraq"],["MBC Masr"],["MBC Masr 2"],["MBC Masr USA"],["NBC"],["NBC LX Home"],["NBC Sports NOW"],["News 11"],["News Nation"],["Newsmax 2"],["One Channel"],["Oromar TV"],["Red Bull TV"],["Red Line"],["StoryChannel TV"],["Strana FM"],["Strawberry Shortcake"],["TVBS亚洲"],["TVC"],["Zee 24 Taas"],["Zee Business"],["Zee News"],["Zee Telugu News"]]},{"g":"春晚频道","c":[["1983年春晚","春晚1983"],["1984年春晚","春晚1984"],["1985年春晚","春晚1985"],["1986年春晚","春晚1986"],["1987年春晚","春晚1987"],["1988年春晚","春晚1988"],["1989年春晚","春晚1989"],["1991年春晚","春晚1991"],["1992年春晚","春晚1992"],["1993年春晚","春晚1993"],["1994年春晚","春晚1994"],["1995年春晚","春晚1995"],["1996年春晚","春晚1996"],["1997年春晚","春晚1997"],["1998年春晚","春晚1998"],["1999年春晚","春晚1999"],["2000年春晚","春晚2000"],["2001年春晚","春晚2001"],["2002年春晚","春晚2002"],["2003年春晚","春晚2003"],["2004年春晚","春晚2004"],["2005年春晚","春晚2005"],["2006年春晚","春晚2006"],["2007年春晚","春晚2007"],["2008年春晚","春晚2008"],["2009年春晚","春晚2009"],["2010年春晚","春晚2010"],["2011年春晚","春晚2011"],["2012年春晚"],["2013年春晚","春晚2013"],["2014年春晚","春晚2014"],["2015年春晚","春晚2015"],["2016年春晚"],["2017年春晚","春晚2017"],["2018年春晚","春晚2018"],["2019年春晚","春晚2019"],["2020年春晚","春晚2020"],["2021年春晚","春晚2021"],["2022年春晚","春晚2022"],["2023年春晚"],["2024年春晚","春晚2024"],["2025年春晚","春晚2025"]]},{"g":"其它","c":[["求索动物"],["求索生活"],["求索科学"],["求索纪录"],["哒啵电竞"],["四海钓鱼"],["睛彩广场"],["睛彩竞技"],["睛彩篮球"],["睛彩羽毛球"],["环球旅游"],["环球电视"],["快乐垂钓"]]}]}</script>
+<script>window.__CHANNEL_DICT__ = JSON.parse(document.getElementById('dict').textContent);</script>
+<script>/* ===================== 状态 ===================== */
+const DEFAULT_EPG = 'https://epg.catvod.com/epg.xml';
+const LOGO_BASE = 'https://live.fanmingming.com/tv/';
+const OTHER = '其他';
+
+const S = {
+  entries: [],           // {name,url,group,canon,hit,tvgId,logo,chKey}
+  groups: [],            // 有序分组名
+  epg: { map: new Map(), loaded: false, count: 0, id: '' },
+  q: '',
+  filter: 'all',
+  editingUrl: '',
+  log: []
+};
+
+/* ===================== 工具 ===================== */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function toast(msg, kind = '') {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'toast on ' + kind;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { t.className = 'toast ' + kind; }, 2200);
+}
+
+/* 归一化：去符号/空格/全角，小写 */
+function norm(s) {
+  if (!s) return '';
+  let x = String(s).trim().toLowerCase();
+  x = x.replace(/[\s\u3000]+/g, '');
+  x = x.replace(/[（）()【】\[\]｛｝{}「」《》<>·•・\-_—–~～、,，.。:：;；!！?？'"“”‘’|\/\\+&]/g, '');
+  x = x.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+  return x;
+}
+
+/* 严格归一化：只压紧空白与全角，保留 + # 等有效符号 */
+function sNorm(s) {
+  if (!s) return '';
+  let x = String(s).trim().toLowerCase().replace(/[\s\u3000]+/g, '');
+  x = x.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+  return x;
+}
+
+/* 去掉清晰度、括号备注等装饰，用于二次匹配 */
+const DECOR = [
+  /\[[^\]]*\]/g, /（[^）]*）/g, /\([^)]*\)/g,
+  /超高清|高清|标清|蓝光|蓝光原盘|4k|8k|uhd|fhd|hd|sd|1080p?|720p?|576p?|2160p?/gi,
+  /杜比|hdr|hevc|h\.?265|h\.?264/gi
+];
+function undecor(s) {
+  let x = String(s);
+  DECOR.forEach((r) => { x = x.replace(r, ''); });
+  x = x.replace(/[\s\u3000]+/g, '');
+  return x;
+}
+
+/* ===================== 词典索引 ===================== */
+const DICT = window.__CHANNEL_DICT__ || { groups: [] };
+const aliasIndex = new Map();   // norm(alias) -> {g, canon}
+const strictIndex = new Map();  // 保留 +/# 等符号的严格键 -> {g, canon}
+const aliasList = [];           // {k, g, canon} 按长度降序
+const canonOf = new Map();      // norm(alias) -> canon 显示名
+
+(function buildIndex() {
+  for (const grp of DICT.groups) {
+    for (const arr of grp.c) {
+      const canon = arr[0];
+      for (const a of arr) {
+        const k = norm(a);
+        if (!k) continue;
+        const sk = sNorm(a);
+        if (sk && !strictIndex.has(sk)) strictIndex.set(sk, { g: grp.g, canon });
+        if (!aliasIndex.has(k)) {
+          aliasIndex.set(k, { g: grp.g, canon });
+          canonOf.set(k, canon);
+          aliasList.push({ k, g: grp.g, canon });
+        }
+      }
+    }
+  }
+  aliasList.sort((a, b) => b.k.length - a.k.length);
+})();
+
+/* 关键词兜底规则 */
+const RULES = [
+  [/cctv-?(\d+)/i, '央视频道'], [/cgtn/i, '央视频道'], [/cetv/i, '央视频道'],
+  [/卫视|cetv|教育台/i, '卫视频道'],
+  [/英超|西甲|意甲|德甲|nba|足球|篮球|体育|赛事|斯诺克|网球|f1/i, '体育频道'],
+  [/卡通|动漫|动画|少儿|kids|anime/i, '动画频道'],
+  [/纪录|纪实|discovery|docu/i, '特色频道'],
+  [/电影|影院|影迷|cinema|movie|大片/i, '电影频道'],
+  [/春晚/i, '春晚频道'],
+  [/新闻|news|资讯/i, '特色频道'],
+  [/音乐|music|戏曲|综艺|剧场|电视剧/i, '特色频道'],
+  [/凤凰|tvb|翡翠|明珠|hoy|viutv|rthk|澳门|澳视|东森|中天|三立|民视|台视|华视|中视|八大|纬来|龙华|靖天/i, '港·澳·台'],
+  [/huya|虎牙/i, '虎牙'], [/douyu|斗鱼/i, '斗鱼'], [/^yy|yy\//i, 'YY']
+];
+
+function heuristic(name) {
+  for (const [re, g] of RULES) if (re.test(name)) return g;
+  return OTHER;
+}
+
+/**
+ * 匹配频道：返回 {group, canon, hit}
+ * hit: exact | partial | fuzzy | none
+ */
+function matchChannel(rawName) {
+  const name = String(rawName || '').trim();
+  if (!name) return { group: OTHER, canon: name, hit: 'none' };
+  const n = norm(name);
+  const sn = sNorm(name);
+  const nu = norm(undecor(name));
+  const su = sNorm(undecor(name));
+
+  // 0. 严格键优先（保留 + 等符号，避免 CCTV5+ 被当成 CCTV5）
+  if (strictIndex.has(sn)) {
+    const m = strictIndex.get(sn);
+    return { group: m.g, canon: m.canon, hit: 'exact' };
+  }
+
+  // 1. 精确
+  if (aliasIndex.has(n)) {
+    const m = aliasIndex.get(n);
+    return { group: m.g, canon: m.canon, hit: 'exact' };
+  }
+  // 2. 去装饰后精确（严格键 → 普通键）
+  if (su && su !== sn && strictIndex.has(su)) {
+    const m = strictIndex.get(su);
+    return { group: m.g, canon: m.canon, hit: 'exact' };
+  }
+  if (nu && aliasIndex.has(nu)) {
+    const m = aliasIndex.get(nu);
+    return { group: m.g, canon: m.canon, hit: 'exact' };
+  }
+  // 3. 去掉尾部 D/B 变体再试
+  const v = nu.replace(/[db]$/, '');
+  if (v && v !== nu && aliasIndex.has(v)) {
+    const m = aliasIndex.get(v);
+    return { group: m.g, canon: m.canon, hit: 'exact' };
+  }
+
+  // 4. 双向包含（取最长命中，长度>=3 抑制误判）
+  const u = nu;
+  let best = null;
+  for (const a of aliasList) {
+    if (a.k.length < 3) continue;
+    if (n.includes(a.k) || (u.length >= 3 && u.includes(a.k))) {
+      best = a; break;                 // aliasList 已按长度降序
+    }
+    if (u.length >= 3 && a.k.includes(u) && u.length >= a.k.length - 4) {
+      best = a; break;
+    }
+  }
+  if (best) return { group: best.g, canon: best.canon, hit: 'partial' };
+
+  // 5. 关键词
+  const g = heuristic(name);
+  return { group: g, canon: name, hit: g === OTHER ? 'none' : 'fuzzy' };
+}
+
+/* ===================== 解析 ===================== */
+function isUrl(s) {
+  return /^(https?|rtmp|rtsp|udp|rtp|p3p|p2p|mms|rtmps?|hls|http):\/\//i.test(s) || /^\/\//.test(s);
+}
+
+/** 从一行 "名称,url" / "名称|别名,url" / "url" 中拆出 */
+function splitLine(line) {
+  const t = line.trim();
+  if (!t || t.startsWith('#')) return null;
+  const idx = t.lastIndexOf(',');
+  if (idx > 0) {
+    const left = t.slice(0, idx).trim();
+    const right = t.slice(idx + 1).trim();
+    if (isUrl(right) || right.length > 0) {
+      const names = left.split('|').map((x) => x.trim()).filter(Boolean);
+      return { name: names[0] || right, url: right };
+    }
+  }
+  if (isUrl(t)) return { name: t.split('/').pop().split('?')[0] || t, url: t };
+  return null;
+}
+
+function parseTxt(text) {
+  const out = [];
+  let curGroup = null;
+  let loose = [];
+  const lines = text.split(/\r?\n/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/,?#genre#/i.test(line)) {
+      curGroup = line.replace(/,?#genre#/i, '').replace(/^[,\s]+|[,\s]+$/g, '').trim() || '未命名分组';
+      continue;
+    }
+    const item = splitLine(line);
+    if (!item) continue;
+    item.srcGroup = curGroup;
+    out.push(item);
+    if (!curGroup) loose.push(item);
+  }
+  return out;
+}
+
+function parseM3u(text) {
+  const out = [];
+  let meta = null;
+  const lines = text.split(/\r?\n/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^#EXTINF/i.test(line)) {
+      const attr = {};
+      const re = /([\w-]+)="([^"]*)"/g;
+      let m;
+      while ((m = re.exec(line))) attr[m[1].toLowerCase()] = m[2];
+      const tail = line.split(',').pop().trim();
+      meta = { name: tail || attr['tvg-name'] || '', attr, url: '' };
+      continue;
+    }
+    if (line.startsWith('#EXTGRP:')) {
+      if (meta) meta.attr['group-title'] = line.slice(8).trim();
+      continue;
+    }
+    if (line.startsWith('#')) continue;
+    if (meta && !meta.url) {
+      meta.url = line;
+      out.push({
+        name: meta.name || meta.attr['tvg-name'] || line,
+        url: line,
+        srcGroup: meta.attr['group-title'] || null,
+        tvgId: meta.attr['tvg-id'] || '',
+        tvgName: meta.attr['tvg-name'] || '',
+        logo: meta.attr['tvg-logo'] || ''
+      });
+      meta = null;
+      continue;
+    }
+    const it = splitLine(line);
+    if (it) out.push(it);
+  }
+  return out;
+}
+
+function parseAuto(text) {
+  const t = text.replace(/^\uFEFF/, '').trim();
+  if (/^#EXTM3U/i.test(t) || /#EXTINF/i.test(t)) return { kind: 'm3u', items: parseM3u(t) };
+  if (/,?#genre#/i.test(t)) return { kind: 'txt', items: parseTxt(t) };
+  const items = parseTxt(t);
+  return { kind: 'plain', items };
+}
+
+/* ===================== 入库 ===================== */
+function addItems(items, opts = {}) {
+  const { respectSource = true } = opts;
+  let added = 0, dup = 0;
+  const seen = new Set(S.entries.map((e) => e.name + '\u0001' + e.url));
+  for (const it of items) {
+    const url = (it.url || '').trim();
+    if (!url) continue;
+    let name = (it.name || '').trim() || url;
+    name = name.replace(/^["']|["']$/g, '').trim();
+    const key = name + '\u0001' + url;
+    if (seen.has(key)) { dup++; continue; }
+    seen.add(key);
+
+    const m = matchChannel(name);
+    const logoName = (m.canon || name).replace(/[\\/:*?"<>|]/g, '');
+    S.entries.push({
+      name,
+      url,
+      group: m.group,
+      canon: m.canon,
+      hit: it.tvgId ? 'm3u' : m.hit,
+      tvgId: it.tvgId || '',
+      logo: it.logo || '',
+      logoName,
+      srcGroup: it.srcGroup || null
+    });
+    added++;
+  }
+  rebuildGroups();
+  return { added, dup };
+}
+
+function rebuildGroups() {
+  const order = DICT.groups.map((g) => g.g);
+  const present = new Set(S.entries.map((e) => e.group));
+  const gs = [];
+  for (const g of order) if (present.has(g)) gs.push(g);
+  for (const g of present) if (!gs.includes(g)) gs.push(g);
+  // 其他放最后
+  const i = gs.indexOf(OTHER);
+  if (i >= 0) { gs.splice(i, 1); gs.push(OTHER); }
+  S.groups = gs;
+}
+
+function countBy(group) {
+  return S.entries.filter((e) => e.group === group).length;
+}
+
+/* ===================== EPG ===================== */
+function parseEpgXml(text) {
+  const map = new Map();
+  function scan(src) {
+    const re = /<channel\b[^>]*\bid\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/channel>/gi;
+    let m, n = 0;
+    while ((m = re.exec(src))) {
+      const id = m[1].trim();
+      if (!id) continue;
+      n++;
+      const cand = new Set([id]);
+      const dre = /<display-name[^>]*>([\s\S]*?)<\/display-name>/gi;
+      let d;
+      while ((d = dre.exec(m[2]))) {
+        const v = d[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+        if (v) cand.add(v);
+      }
+      for (const c of cand) {
+        const k = norm(c);
+        if (k && !map.has(k)) map.set(k, id);
+      }
+    }
+    return n;
+  }
+
+  let count = 0;
+  try {
+    const doc = new DOMParser().parseFromString(text, 'text/xml');
+    const chans = doc.getElementsByTagName('channel');
+    if (chans.length) {
+      count = chans.length;
+      for (const ch of chans) {
+        const id = (ch.getAttribute('id') || '').trim();
+        if (!id) continue;
+        const cand = new Set([id]);
+        for (const n of ch.getElementsByTagName('display-name')) {
+          const v = n.textContent.trim();
+          if (v) cand.add(v);
+        }
+        for (const c of cand) {
+          const k = norm(c);
+          if (k && !map.has(k)) map.set(k, id);
+        }
+      }
+    }
+  } catch (e) { /* 交给正则兜底 */ }
+
+  if (!count) count = scan(text);
+  if (!count) throw new Error('未找到 <channel> 节点');
+  return { map, count };
+}
+
+async function fetchEpg(url, opts = {}) {
+  const { silent = false } = opts;
+  setEpgStatus('loading', '正在读取节目单…');
+  const tryUrls = [];
+  if (opts.proxy) tryUrls.push(opts.proxy + url);
+  tryUrls.push(url);
+  let lastErr = '';
+  for (const u of tryUrls) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 20000);
+      const res = await fetch(u, { signal: ctrl.signal, mode: 'cors', credentials: 'omit' });
+      clearTimeout(timer);
+      if (!res.ok) { lastErr = 'HTTP ' + res.status; continue; }
+      const text = await res.text();
+      if (!/<channel/i.test(text)) { lastErr = '返回内容不含频道信息'; continue; }
+      const parsed = parseEpgXml(text);
+      S.epg = { map: parsed.map, loaded: true, count: parsed.count, id: url };
+      applyEpg();
+      setEpgStatus('on', `已载入 ${parsed.count} 个频道节目单`);
+      if (!silent) toast(`节目单已载入：${parsed.count} 个频道`, 'ok');
+      render();
+      return true;
+    } catch (e) {
+      lastErr = e.name === 'AbortError' ? '请求超时' : e.message;
+    }
+  }
+  setEpgStatus('off', `自动读取失败（${lastErr || '网络/CORS 限制'}），可点“粘贴 XML”手动导入`);
+  render();
+  return false;
+}
+
+function setEpgStatus(state, msg) {
+  const box = $('#epgStatus');
+  if (!box) return;
+  const dot = $('#epgDot');
+  dot.className = 'dot ' + ({ on: 'on', loading: 'on', off: 'off', err: 'err' }[state] || '');
+  $('#epgText').textContent = msg;
+  S.log.push(msg);
+}
+
+function applyEpg() {
+  if (!S.epg.loaded) return;
+  const m = S.epg.map;
+  let hit = 0;
+  for (const e of S.entries) {
+    const keys = [e.canon, e.name, undecor(e.name), undecor(e.canon)];
+    let id = '';
+    for (const k of keys) {
+      const nk = norm(k);
+      if (nk && m.has(nk)) { id = m.get(nk); break; }
+    }
+    if (!id) {
+      for (const k of keys) {
+        const nk = norm(k);
+        if (nk.length < 3) continue;
+        for (const [mk, mid] of m) {
+          if (mk.length >= 3 && (mk === nk || mk.includes(nk) || nk.includes(mk))) { id = mid; break; }
+        }
+        if (id) break;
+      }
+    }
+    e.tvgId = id || '';
+    if (id) hit++;
+  }
+  S.epg.matched = hit;
+}
+
+/* ===================== 渲染 ===================== */
+function visibleEntries() {
+  const q = S.q.trim().toLowerCase();
+  return S.entries.filter((e) => {
+    if (S.filter === 'unmatched' && e.hit !== 'none') return false;
+    if (S.filter === 'matched' && e.hit === 'none') return false;
+    if (!q) return true;
+    return e.name.toLowerCase().includes(q) || e.url.toLowerCase().includes(q) || (e.group || '').toLowerCase().includes(q);
+  });
+}
+
+function render() {
+  const total = S.entries.length;
+  const unmatched = S.entries.filter((e) => e.hit === 'none').length;
+  $('#stTotal').textContent = total;
+  $('#stGroup').textContent = S.groups.length;
+  $('#stUnmatched').textContent = unmatched;
+  $('#stEpg').textContent = S.epg.loaded ? (S.epg.matched || 0) : '—';
+  $('#epgChip').className = 'chip ' + (S.epg.loaded ? 'ok' : (total ? 'warn' : ''));
+
+  const body = $('#stageBody');
+  const list = visibleEntries();
+
+  if (!total) {
+    body.innerHTML = `<div class="empty">
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h10M4 18h7"/></svg></div>
+      <h3>还没有导入任何频道</h3>
+      <p>在左侧粘贴直播源文本，导入 <code>.txt</code> / <code>.m3u</code> 文件，或直接填入订阅链接。系统会按内置的 45 个分组词库自动归类，未识别的进入「其他」。</p>
+    </div>`;
+    return;
+  }
+  if (!list.length) {
+    body.innerHTML = `<div class="empty"><h3>没有符合条件的频道</h3><p>换个关键词或把筛选切回“全部”。</p></div>`;
+    return;
+  }
+
+  const byGroup = new Map();
+  for (const e of list) {
+    if (!byGroup.has(e.group)) byGroup.set(e.group, []);
+    byGroup.get(e.group).push(e);
+  }
+  const frag = document.createDocumentFragment();
+  let gi = 0;
+  for (const g of S.groups) {
+    const arr = byGroup.get(g);
+    if (!arr || !arr.length) continue;
+    gi++;
+    const closed = gi > 2 && !S.q;
+    frag.appendChild(groupEl(g, arr, closed));
+  }
+  body.innerHTML = '';
+  body.appendChild(frag);
+}
+
+function groupEl(name, arr, closed) {
+  const wrap = document.createElement('div');
+  wrap.className = 'grp' + (closed ? ' closed' : '');
+  wrap.dataset.group = name;
+
+  const matched = arr.filter((e) => e.hit !== 'none').length;
+  const pct = Math.round((matched / arr.length) * 100);
+  const h = document.createElement('div');
+  h.className = 'grp-h';
+  h.innerHTML = `<svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 9l6 6 6-6"/></svg>
+    <b>${esc(name)}</b><span class="n">${arr.length}</span>
+    <span class="bar"><i style="width:${pct}%"></i></span>`;
+  h.addEventListener('click', () => {
+    wrap.classList.toggle('closed');
+    if (!wrap.classList.contains('closed') && !wrap.dataset.filled) fillGroup(wrap, name);
+  });
+  wrap.appendChild(h);
+
+  const b = document.createElement('div');
+  b.className = 'grp-body';
+  wrap.appendChild(b);
+  if (!closed) fillGroup(wrap, name);
+  return wrap;
+}
+
+function fillGroup(wrap, group) {
+  const body = wrap.querySelector('.grp-body');
+  const list = visibleEntries().filter((e) => e.group === group);
+  const frag = document.createDocumentFragment();
+  list.forEach((e, i) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const badgeTxt = { exact: '精确', partial: '包含', fuzzy: '关键词', m3u: '源内', none: '未识别' }[e.hit] || '';
+    const logoUrl = e.logo || (S.useLogo ? LOGO_BASE + encodeURIComponent(e.logoName) + '.png' : '');
+    row.innerHTML = `
+      <span class="idx">${i + 1}</span>
+      <span class="nm" title="${esc(e.name)}">
+        ${logoUrl ? `<img class="logo" src="${esc(logoUrl)}" alt="" loading="lazy" data-fb="0">` : ''}
+        <span style="overflow:hidden;text-overflow:ellipsis">${esc(e.name)}</span>
+        <span class="badge ${e.hit}">${badgeTxt}</span>
+      </span>
+      <span class="url" title="${esc(e.url)}">${esc(e.url)}</span>
+      <select data-idx="${idxOf(e)}" class="gs">
+        ${S.groups.map((g) => `<option ${g === e.group ? 'selected' : ''}>${esc(g)}</option>`).join('')}
+      </select>
+      <button class="act" title="删除">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>`;
+    const img = row.querySelector('img.logo');
+    if (img) {
+      img.addEventListener('error', () => {
+        const step = Number(img.dataset.fb || 0);
+        const alts = logoAlts(e);
+        if (step < alts.length) {
+          img.dataset.fb = step + 1;
+          img.src = alts[step];
+        } else {
+          img.remove();
+        }
+      });
+    }
+    row.querySelector('.gs').addEventListener('change', (ev) => {
+      const t = S.entries[Number(ev.target.dataset.idx)];
+      t.group = ev.target.value;
+      t.hit = t.hit === 'none' ? 'exact' : t.hit;
+      rebuildGroups();
+      render();
+      toast(`已移动到「${ev.target.value}」`);
+    });
+    row.querySelector('.act').addEventListener('click', () => {
+      const idx = Number(row.querySelector('select').dataset.idx);
+      S.entries.splice(idx, 1);
+      rebuildGroups();
+      render();
+    });
+    frag.appendChild(row);
+  });
+  body.innerHTML = '';
+  body.appendChild(frag);
+  wrap.dataset.filled = '1';
+}
+
+function idxOf(e) { return S.entries.indexOf(e); }
+
+function logoAlts(e) {
+  const base = e.logoName || e.name;
+  const plain = base.replace(/[（(].*?[)）]/g, '').replace(/(高清|超清|标清|蓝光|HD|FHD|4K|8K)/gi, '').trim() || base;
+  const out = [];
+  const cands = [plain, e.canon, base, plain.replace(/\s+/g, '')];
+  for (const c of cands) {
+    if (!c) continue;
+    const u = LOGO_BASE + encodeURIComponent(c) + '.png';
+    if (!out.includes(u)) out.push(u);
+  }
+  return out;
+}
+
+/* ===================== 导出 ===================== */
+function exportList() {
+  const list = visibleEntries();
+  return list.length ? list : S.entries;
+}
+
+function buildM3u(list, o) {
+  const head = o.epg ? `#EXTM3U x-tvg-url="${o.epgUrl}" url-tvg="${o.epgUrl}"` : '#EXTM3U';
+  const out = [head];
+  for (const e of list) {
+    const attrs = [];
+    const id = o.epg ? (e.tvgId || '') : '';
+    if (id) attrs.push(`tvg-id="${id}"`);
+    if (o.tvgName) attrs.push(`tvg-name="${e.canon || e.name}"`);
+    const logo = o.logo ? (e.logo || LOGO_BASE + encodeURIComponent(e.logoName || e.name) + '.png') : '';
+    if (logo) attrs.push(`tvg-logo="${logo}"`);
+    if (o.group) attrs.push(`group-title="${e.group}"`);
+    out.push(`#EXTINF:-1 ${attrs.join(' ')},${e.name}`.replace(/\s+,/, ','));
+    out.push(e.url);
+  }
+  return out.join('\n') + '\n';
+}
+
+function buildTxt(list, o) {
+  const byGroup = new Map();
+  for (const e of list) {
+    if (!byGroup.has(e.group)) byGroup.set(e.group, []);
+    byGroup.get(e.group).push(e);
+  }
+  const out = [];
+  const names = o.group ? S.groups.filter((g) => byGroup.has(g)) : [''];
+  for (const g of names) {
+    const arr = byGroup.get(g) || [];
+    if (!arr.length) continue;
+    if (g) out.push(`${g},#genre#`);
+    for (const e of arr) out.push(`${e.name},${e.url}`);
+    out.push('');
+  }
+  return out.join('\n').trim() + '\n';
+}
+
+function download(filename, text, mime = 'text/plain;charset=utf-8') {
+  const blob = new Blob([text], { type: mime });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+function stamp() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+function curOptions() {
+  return {
+    epg: $('#optEpg').checked,
+    epgUrl: ($('#epgUrl').value || DEFAULT_EPG).trim(),
+    logo: $('#optLogo').checked,
+    tvgName: $('#optName').checked,
+    group: $('#optGroup').checked
+  };
+}
+
+function showPreview(kind) {
+  const list = exportList();
+  const o = curOptions();
+  const text = kind === 'm3u' ? buildM3u(list, o) : buildTxt(list, o);
+  $('#modalTitle').textContent = kind === 'm3u' ? 'M3U 预览' : 'TXT 预览';
+  $('#modalMeta').textContent = `${list.length} 条 · ${(new Blob([text]).size / 1024).toFixed(1)} KB`;
+  $('#modalPre').textContent = text.length > 60000 ? text.slice(0, 60000) + '\n…（预览截断，导出为完整内容）' : text;
+  $('#modal').classList.add('on');
+  $('#modal').dataset.kind = kind;
+}
+
+/* ===================== 事件绑定 ===================== */
+function readFile(file) {
+  const fr = new FileReader();
+  fr.onload = () => importText(String(fr.result), file.name);
+  fr.readAsText(file, 'utf-8');
+}
+
+function importText(text, label = '文本') {
+  const { kind, items } = parseAuto(text);
+  if (!items.length) {
+    toast('没有解析到有效频道，检查是否为「频道名,地址」格式', 'err');
+    return;
+  }
+  const { added, dup } = addItems(items);
+  if (S.epg.loaded) applyEpg();
+  render();
+  toast(`${label}：解析 ${items.length} 条，新增 ${added} 条${dup ? `，跳过重复 ${dup}` : ''}`, 'ok');
+}
+
+function bind() {
+  const dz = $('#drop');
+  const fi = $('#fileInput');
+  dz.addEventListener('click', () => fi.click());
+  fi.addEventListener('change', () => {
+    [...fi.files].forEach(readFile);
+    fi.value = '';
+  });
+  ['dragenter', 'dragover'].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove('over'); }));
+  dz.addEventListener('drop', (e) => {
+    const files = e.dataTransfer.files;
+    if (files && files.length) [...files].forEach(readFile);
+    else {
+      const t = e.dataTransfer.getData('text');
+      if (t) importText(t, '拖入文本');
+    }
+  });
+
+  $('#btnPaste').addEventListener('click', () => {
+    const t = $('#pasteBox').value;
+    if (!t.trim()) { toast('先粘贴内容再解析', 'err'); return; }
+    importText(t, '粘贴文本');
+  });
+  $('#btnClearPaste').addEventListener('click', () => { $('#pasteBox').value = ''; });
+
+  $('#btnUrl').addEventListener('click', async () => {
+    const u = $('#urlInput').value.trim();
+    if (!u) { toast('请填写订阅地址', 'err'); return; }
+    const btn = $('#btnUrl');
+    btn.disabled = true; btn.textContent = '拉取中…';
+    try {
+      const res = await fetch(u, { mode: 'cors' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const t = await res.text();
+      importText(t, '订阅源');
+    } catch (e) {
+      toast(`拉取失败：${e.message}（多为跨域限制，请直接下载文件再导入）`, 'err');
+    } finally {
+      btn.disabled = false; btn.textContent = '从链接导入';
+    }
+  });
+
+  $('#btnDemo').addEventListener('click', async () => {
+    try {
+      const res = await fetch('demo.txt');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      importText(await res.text(), '示例 demo.txt');
+    } catch (e) {
+      toast('示例文件不在同目录，可直接把 demo.txt 拖进来', 'err');
+    }
+  });
+
+  $('#btnEpg').addEventListener('click', () => {
+    fetchEpg(($('#epgUrl').value || DEFAULT_EPG).trim(), { proxy: ($('#epgProxy').value || '').trim() });
+  });
+
+  $('#btnEpgPaste').addEventListener('click', () => {
+    const xml = $('#epgXml').value.trim();
+    if (!xml) { toast('先粘贴 EPG XML 内容', 'err'); return; }
+    try {
+      const p = parseEpgXml(xml);
+      S.epg = { map: p.map, loaded: true, count: p.count, id: '手动导入' };
+      applyEpg();
+      setEpgStatus('on', `已载入 ${p.count} 个频道节目单（手动）`);
+      render();
+      toast(`节目单已载入：${p.count} 个频道`, 'ok');
+    } catch (e) {
+      setEpgStatus('err', '解析失败：' + e.message);
+      toast('XML 解析失败', 'err');
+    }
+  });
+
+  $('#q').addEventListener('input', (e) => { S.q = e.target.value; render(); });
+  $$('#segFilter button').forEach((b) => b.addEventListener('click', () => {
+    $$('#segFilter button').forEach((x) => x.classList.remove('on'));
+    b.classList.add('on');
+    S.filter = b.dataset.f;
+    render();
+  }));
+
+  $('#optLogo').addEventListener('change', (e) => { S.useLogo = e.target.checked; render(); });
+
+  $('#expM3u').addEventListener('click', () => {
+    if (!S.entries.length) return toast('没有可导出的频道', 'err');
+    download(`live-${stamp()}.m3u`, buildM3u(exportList(), curOptions()), 'audio/x-mpegurl');
+    toast('已导出 M3U', 'ok');
+  });
+  $('#expTxt').addEventListener('click', () => {
+    if (!S.entries.length) return toast('没有可导出的频道', 'err');
+    download(`live-${stamp()}.txt`, buildTxt(exportList(), curOptions()));
+    toast('已导出 TXT', 'ok');
+  });
+  $('#expViewM3u').addEventListener('click', () => showPreview('m3u'));
+  $('#expViewTxt').addEventListener('click', () => showPreview('txt'));
+
+  $('#modalClose').addEventListener('click', () => $('#modal').classList.remove('on'));
+  $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') $('#modal').classList.remove('on'); });
+  $('#modalSave').addEventListener('click', () => {
+    const kind = $('#modal').dataset.kind || 'm3u';
+    const list = exportList();
+    const text = kind === 'm3u' ? buildM3u(list, curOptions()) : buildTxt(list, curOptions());
+    download(`live-${stamp()}.${kind}`, text, kind === 'm3u' ? 'audio/x-mpegurl' : 'text/plain;charset=utf-8');
+    toast('已导出', 'ok');
+  });
+  $('#modalCopy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('#modalPre').textContent); toast('已复制到剪贴板', 'ok'); }
+    catch { toast('复制失败，请手动选择文本', 'err'); }
+  });
+
+  $('#btnClear').addEventListener('click', () => {
+    if (!S.entries.length) return;
+    if (!confirm(`确定清空 ${S.entries.length} 条频道？`)) return;
+    S.entries = []; S.groups = []; render(); toast('已清空');
+  });
+
+  $('#btnRescan').addEventListener('click', () => {
+    if (!S.entries.length) return toast('先导入频道');
+    for (const e of S.entries) {
+      const m = matchChannel(e.name);
+      e.group = m.group; e.canon = m.canon;
+      e.hit = e.tvgId ? 'm3u' : m.hit;
+    }
+    rebuildGroups();
+    if (S.epg.loaded) applyEpg();
+    render();
+    toast('已按当前词库重新分组', 'ok');
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') $('#modal').classList.remove('on');
+  });
+}
+
+/* ===================== 启动 ===================== */
+S.useLogo = true;
+document.addEventListener('DOMContentLoaded', () => {
+  bind();
+  render();
+  setEpgStatus('off', '尚未载入节目单 · 点击下方按钮从 ' + DEFAULT_EPG + ' 读取');
+});
+</script>
+</body>
+</html>
