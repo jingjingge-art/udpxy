@@ -1,8 +1,12 @@
 name: udpxy IP 扫描检测
 
 on:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
   schedule:
-    - cron: "30 17 * * *"
+    - cron: "30 9 * * *"
   workflow_dispatch:
     inputs:
       concurrency:
