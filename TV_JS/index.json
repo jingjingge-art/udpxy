@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "app": "tvlive",
-  "updated": "2026-11-21T07:50:33+00:00",
+  "updated": "2026-11-25T09:24:48+00:00",
   "note": "TVLive 频道订阅清单。央视 / 卫视也在远程了，APK 里只剩这个接口地址。",
   "groups": [
     {
@@ -45,8 +45,8 @@
       "group": "安徽",
       "file": "anhui.js",
       "count": 0,
-      "updated": "2026-11-21",
-      "sha256": "de955bbbeda03e0b91c496f73060e260bcaddbace7e61ae6134074c923b5a847",
+      "updated": "2026-11-25",
+      "sha256": "12d35765600a0870f3a944e5d1f5c85458eaab7692037a462f5f4e421e2f3dd1",
       "note": "安徽省、市、县级频道"
     },
     {
@@ -54,8 +54,8 @@
       "group": "北京",
       "file": "beijing.js",
       "count": 0,
-      "updated": "2026-11-21",
-      "sha256": "33ba4521634767caf8abadd20e9595bbcd73d59bf6ce8c2d50dbdfcc011c6079",
+      "updated": "2026-11-25",
+      "sha256": "9fce3bdd22055ee2e5b85edc5c1dbfee17c2633aaa75fbb860c7c5f1f2e35875",
       "note": "BRTV 各频道（公开 IPTV 转发源，非官网直连）"
     },
     {
